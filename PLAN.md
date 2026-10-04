@@ -150,13 +150,17 @@ Three strands run in parallel, so reading and playing grow together:
 
 ## 6. Technical outline
 
-- **Front end:** TypeScript + Vite + Svelte (light and fast on a tablet)
+> **Changed (4 Oct):** no build step for now. The MVP is plain JavaScript modules, served
+> directly by GitHub Pages, which keeps updates to a single `git push` and avoids
+> installing Node. Worth revisiting (TypeScript/Svelte) if the code grows a lot.
+
+- **Front end:** plain ES modules (originally planned: TypeScript + Vite + Svelte)
 - **Score rendering:** OpenSheetMusicDisplay (MusicXML, built-in cursor) for
   pieces; VexFlow directly for generated drills
 - **Sound / metronome:** Tone.js with a sampled piano for "hear it first"
 - **Input:** Web MIDI API; Web Audio mic + `pitchy` (single notes) + Basic
   Pitch TF.js (chords)
-- **Storage:** IndexedDB (via Dexie); export/import JSON backup
+- **Storage:** localStorage (small data; IndexedDB later if songs/recordings get stored); export/import JSON backup
 - **PWA:** vite-plugin-pwa (offline, install), Wake Lock API
 - **Content as data:** lessons are JSON + MusicXML files in the repo, so
   adding new lessons doesn't need code changes

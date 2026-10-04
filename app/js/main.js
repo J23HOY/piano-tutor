@@ -1,0 +1,108 @@
+import { store } from './store.js';
+import { input } from './input.js';
+import { playNote } from './audio.js';
+import { createKeyboard } from './keyboard.js';
+import { renderWelcome, renderToday, renderPath, renderLesson, renderGym, renderProgress, renderSettings } from './screens.js';
+
+const root = document.getElementById('view');
+const chip = document.getElementById('listen');
+const dock = document.getElementById('dock');
+let cleanup = null;
+
+// ---------------- theme
+const applyTheme = () => {
+  const t = store.get().settings.theme;
+  if (t === 'system') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = t;
+};
+applyTheme();
+
+// ---------------- routing
+const ROUTES = [
+  [/^\/welcome$/, renderWelcome],
+  [/^\/today$/, renderToday],
+  [/^\/path$/, renderPath],
+  [/^\/lesson\/([\w-]+)$/, renderLesson],
+  [/^\/gym$/, renderGym],
+  [/^\/progress$/, renderProgress],
+  [/^\/settings$/, renderSettings],
+];
+function route() {
+  const raw = location.hash.slice(1) || '/today';
+  const [path, qs] = raw.split('?');
+  if (!store.get().onboarded && path !== '/welcome') { location.replace('#/welcome'); return; }
+  const params = new URLSearchParams(qs || '');
+  cleanup?.(); cleanup = null;
+  const hit = ROUTES.find(([re]) => re.test(path));
+  if (!hit) { location.replace('#/today'); return; }
+  const [re, fn] = hit;
+  const args = path.match(re).slice(1);
+  root.innerHTML = '';
+  cleanup = fn(root, params, ...args) || null;
+  document.querySelectorAll('nav.tabs a').forEach(a => a.classList.toggle('on', path.startsWith(a.dataset.r)));
+  const practising = /^\/(lesson|gym)/.test(path) || params.get('step') === 'placement';
+  document.body.classList.toggle('practising', practising);
+  updateDock(practising);
+  window.scrollTo({ top: 0 });
+}
+window.addEventListener('hashchange', route);
+
+// ---------------- listening chip
+// Browsers only allow audio to start after a tap, so the first tap anywhere starts the mic.
+input.onStatus(st => {
+  const on = st.mic === 'on' || st.midi === 'on';
+  chip.className = 'listen ' + (on ? 'on' : st.mic === 'error' ? 'err' : '');
+  chip.innerHTML = on
+    ? `<span class="pulse"></span>Listening${st.midi === 'on' ? ' (MIDI)' : ''}`
+    : st.mic === 'starting' ? 'Starting mic…'
+    : st.mic === 'error' ? 'Mic blocked. Tap to fix' : 'Tap to listen';
+});
+chip.addEventListener('click', () => {
+  if (input.status.mic === 'error') location.hash = '#/settings';
+  else input.startMic();
+});
+window.addEventListener('pointerdown', () => {
+  if (store.get().settings.autoListen && input.status.mic === 'off' && store.get().onboarded) input.startMic();
+}, { capture: true });
+
+// ---------------- on-screen keys (bottom dock)
+let dockKb = null;
+function updateDock(practising) {
+  const show = practising && store.get().settings.touchKeyboard;
+  dock.hidden = !show;
+  document.body.classList.toggle('with-dock', show);
+  if (show && !dockKb) {
+    dockKb = createKeyboard({ from: 48, to: 76, labels: 'none', onPress: m => { playNote(m, 0.6); input.emit(m, 'touch', 80); } });
+    dock.querySelector('.dock-keys').appendChild(dockKb.el);
+  }
+}
+dock.querySelector('[data-hide]').onclick = () => {
+  store.update(s => { s.settings.touchKeyboard = false; });
+  updateDock(false);
+};
+// Light up dock keys for any input, so you can see what the app heard.
+input.on(e => dockKb?.flash(e.midi));
+
+// ---------------- keep the screen on while practising
+let wakeLock = null;
+async function keepAwake() {
+  try { if (!wakeLock && 'wakeLock' in navigator) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.onrelease = () => { wakeLock = null; }; } } catch {}
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') keepAwake(); });
+window.addEventListener('pointerdown', keepAwake, { once: true });
+
+// ---------------- offline support
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
+route();
+
+// Dev/test hook: ?sim=64,64,65 plays those notes into the app after load.
+const sim = new URLSearchParams(location.search).get('sim');
+if (sim) {
+  const notes = sim.split(',').map(Number);
+  let i = 0;
+  const tick = () => { if (i < notes.length) { input.emit(notes[i++], 'keys'); setTimeout(tick, 150); } };
+  setTimeout(tick, 1000);
+}

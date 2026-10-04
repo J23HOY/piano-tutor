@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Seed test state</title>
+<script>
+// Dev helper: tests/seed.html?preset=new|placed|midway&to=/today
+const p = new URLSearchParams(location.search);
+const preset = p.get('preset') || 'new';
+const DAY = 86400000, now = Date.now();
+const base = { version: 1, createdAt: now - 30 * DAY, settings: { touchKeyboard: true, micThreshold: 0.012, theme: p.get('theme') || 'system', autoListen: false },
+  onboarded: preset !== 'new', placement: null, lessons: {}, notes: {}, practice: {}, history: [], lastActiveAt: null, prevSessionAt: null };
+const done = ids => ids.forEach(id => base.lessons[id] = { done: true, completedAt: now - 5 * DAY, steps: {} });
+if (preset === 'placed' || preset === 'midway') {
+  base.placement = { at: now - 20 * DAY, score: 13, total: 16, passed: true };
+  done(['l1-1','l1-2','l2-1','l2-2','l2-3','l3-1','l3-2']);
+}
+if (preset === 'midway') {
+  done(['l4-1','l4-2','l4-3']);
+  base.lessons['l4-1'].steps = { 1: { done: true, best: 0.92, at: now - 6 * DAY } };
+  base.lessons['l4-2'].steps = { 1: { done: true, best: 0.75, at: now - 5 * DAY } };
+  base.lessons['l4-3'].steps = { 0: { done: true, best: 1, at: now - 5 * DAY } };
+  Object.assign(base.notes, { C4: { box: 5, seen: 20, right: 19 }, G4: { box: 4, seen: 14, right: 12 }, F3: { box: 2, seen: 12, right: 8 },
+    C5: { box: 3, seen: 9, right: 7 }, C3: { box: 1, seen: 8, right: 4 }, D4: { box: 4, seen: 10, right: 9 }, E4: { box: 3, seen: 10, right: 8 }, F4: { box: 2, seen: 9, right: 6 } });
+  for (let i = 0; i < 28; i++) if ([0, 2, 3, 5, 8, 9, 12, 15, 16, 19].includes(i)) {
+    const d = new Date(now - (i + 5) * DAY); const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    base.practice[k] = 600 + (i * 137) % 900;
+  }
+  base.history = [
+    { at: now - 5 * DAY, kind: 'play', id: 'l4-3', title: 'Mary Had a Little Lamb', detail: '100% clean, 31s' },
+    { at: now - 5 * DAY, kind: 'lesson', id: 'l4-3', title: 'Mary Had a Little Lamb', detail: 'Lesson complete' },
+    { at: now - 5 * DAY, kind: 'gym', id: 'gym', title: 'Reading Gym', detail: '9/10, avg 2.1s' },
+  ];
+  base.lastActiveAt = now - 5 * DAY;
+}
+if (p.get('gap')) base.lastActiveAt = now - Number(p.get('gap')) * DAY;
+localStorage.setItem('pianoTutor.v1', JSON.stringify(base));
+location.replace('../app/' + (p.get('sim') ? '?sim=' + p.get('sim') : '') + '#' + (p.get('to') || '/today'));
+</script>
