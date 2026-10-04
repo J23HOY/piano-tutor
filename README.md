@@ -70,6 +70,13 @@ upwards, listens via mic (or USB MIDI), gives feedback and saves progress.
     without passing. Later lessons are locked.
   - Blue accent everywhere (buttons, progress ticks, icon) instead of teal/green.
 
+- 4 Oct 2026: **v0.3.1**, fix: on a fresh tablet the name form's Continue didn't move on
+  (navigating to the same `#/welcome` address fires no hashchange), so repeated taps made four
+  "Jonny" players. Now: `go()` redraws when the address is unchanged; players with the same
+  name are merged on load (keeping the one with most progress); adding an existing name opens
+  that player; and the household's players (Jonny, Leia) are created automatically once, so
+  the app opens straight on "Who's playing?". Tests: tests/dupes.html, tests/flow.html.
+
 ## Links
 - Repo: https://github.com/J23HOY/piano-tutor
 - **App (tablet):** https://j23hoy.github.io/piano-tutor/app/

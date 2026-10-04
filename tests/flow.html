@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8"><title>flow</title><body style="margin:0"><pre id="log" style="position:fixed;bottom:0;left:0;background:#ff0;z-index:9;margin:0;font-size:14px"></pre>
+<iframe id="f" style="width:1280px;height:760px;border:0"></iframe><script>
+localStorage.clear(); sessionStorage.clear();
+const f = document.getElementById('f'), log = m => document.getElementById('log').textContent += m + '\n';
+const wait = ms => new Promise(r => setTimeout(r, ms));
+f.src = '../app/';
+f.onload = async () => {
+  await wait(600); const d = f.contentDocument, w = f.contentWindow;
+  log('start: ' + w.location.hash);
+  d.querySelectorAll('[data-id]')[1].click(); await wait(300);
+  log('tap Leia -> ' + w.location.hash + ' | ' + d.querySelector('h1').textContent);
+  d.querySelector('[data-c=new]').click(); await wait(300);
+  log('I\'m new -> ' + w.location.hash + ' | ' + d.querySelector('h1').textContent);
+  w.location.hash = '#/welcome?new=1'; await wait(300);
+  const form = d.querySelector('form'); form.pname.value = 'leia'; form.requestSubmit(); await wait(300);
+  log('add "leia" -> ' + w.location.hash + ' | players: ' + JSON.parse(localStorage.getItem('pianoTutor.profiles')).list.map(p => p.name).join(','));
+  w.location.hash = '#/welcome?new=1'; await wait(300);
+  const f2 = d.querySelector('form'); f2.pname.value = 'Grandma'; f2.requestSubmit(); await wait(300);
+  log('add Grandma -> ' + w.location.hash + ' | ' + d.querySelector('h1').textContent + ' | players: ' + JSON.parse(localStorage.getItem('pianoTutor.profiles')).list.map(p => p.name).join(','));
+};
+</script>

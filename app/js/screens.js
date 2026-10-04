@@ -15,7 +15,8 @@ import { dock } from './dock.js';
 import { goalText, stepPassed, GYM_PASS } from './goals.js';
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const go = hash => { location.hash = hash; };
+// Navigate; if we're already on that address, redraw it (setting the same hash does nothing).
+const go = hash => { if (location.hash === hash) window.dispatchEvent(new HashChangeEvent('hashchange')); else location.hash = hash; };
 const DAY = 86400000;
 
 // ---------------------------------------------------------------- helpers
@@ -106,9 +107,10 @@ function renderNewPlayer(root) {
     e.preventDefault();
     const name = form.pname.value.trim();
     if (!name) return;
+    form.querySelector('button').disabled = true;
     store.switchTo(store.addPlayer(name));
     markPicked();
-    go('#/welcome');
+    go(store.get().onboarded ? '#/today' : '#/welcome');
   };
 }
 

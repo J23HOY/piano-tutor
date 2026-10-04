@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><title>dupes</title><script>
+// Recreates the v0.3.0 bug state: four "Jonny" players, one with some progress.
+localStorage.clear(); sessionStorage.clear();
+const list = [];
+for (let i = 0; i < 4; i++) {
+  const id = 'pdup' + i;
+  list.push({ id, name: 'Jonny', colour: '#2563c4', createdAt: Date.now() });
+  const d = { version: 1, createdAt: Date.now(), settings: {}, onboarded: i === 2, placement: null,
+    lessons: i === 2 ? { 'l1-1': { done: true, steps: {} } } : {}, notes: {}, practice: {}, history: [], lastActiveAt: i === 2 ? Date.now() - 3600e3 : null };
+  localStorage.setItem('pianoTutor.v1.' + id, JSON.stringify(d));
+}
+localStorage.setItem('pianoTutor.profiles', JSON.stringify({ active: 'pdup3', list }));
+location.replace('../app/' + (new URLSearchParams(location.search).get('to') || ''));
+</script>

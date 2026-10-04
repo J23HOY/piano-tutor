@@ -32,8 +32,16 @@ const fresh = () => ({
 const read = (k, fallback) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; } catch { return fallback; } };
 const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { console.warn('Could not save', e); } };
 
+// The household's players. Created automatically so nobody has to type a name.
+const HOUSEHOLD = [{ name: 'Jonny', colour: '#2563c4' }, { name: 'Leia', colour: '#7c3aed' }];
+const progressScore = id => {
+  const d = read(playerKey(id), {}) || {};
+  return [Object.values(d.lessons || {}).filter(l => l.done).length, Object.keys(d.lessons || {}).length + Object.keys(d.notes || {}).length, d.onboarded ? 1 : 0, d.lastActiveAt || 0];
+};
+const better = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] > b[i]; return false; };
+
 let device = { ...DEVICE_DEFAULTS, ...read(DEVICE_KEY, {}) };
-let profiles = loadProfiles();
+let profiles = tidyProfiles(loadProfiles());
 let state = loadPlayer(profiles.active);
 const subs = new Set();
 
@@ -54,6 +62,37 @@ function loadProfiles() {
     return out;
   }
   return { active: null, list: [] };
+}
+// Merge players with the same name (keeping whichever has the most progress) and make sure
+// the household's players exist (once: anyone removed later stays removed).
+function tidyProfiles(p) {
+  const keep = new Map();
+  for (const pl of p.list) {
+    const k = pl.name.trim().toLowerCase();
+    const prev = keep.get(k);
+    if (!prev) { keep.set(k, pl); continue; }
+    const winner = better(progressScore(pl.id), progressScore(prev.id)) ? pl : prev;
+    const loser = winner === pl ? prev : pl;
+    keep.set(k, winner);
+    if (p.active === loser.id) p.active = winner.id;
+    try { localStorage.removeItem(playerKey(loser.id)); } catch {}
+  }
+  p.list = [...keep.values()];
+  if (!p.seeded) {
+    HOUSEHOLD.forEach(({ name, colour }, i) => {
+      if (p.list.some(x => x.name.trim().toLowerCase() === name.toLowerCase())) return;
+      const id = 'p' + Date.now().toString(36) + i + Math.random().toString(36).slice(2, 5);
+      write(playerKey(id), fresh());
+      p.list.push({ id, name, colour, createdAt: Date.now() });
+    });
+    const order = HOUSEHOLD.map(h => h.name.toLowerCase());
+    const rank = x => { const r = order.indexOf(x.name.toLowerCase()); return r < 0 ? 99 : r; };
+    p.list.sort((a, b) => rank(a) - rank(b));
+    p.seeded = 1;
+  }
+  if (!p.list.some(x => x.id === p.active)) p.active = null;
+  write(PROFILES_KEY, p);
+  return p;
 }
 function loadPlayer(id) {
   const s = id ? read(playerKey(id), null) : null;
@@ -82,8 +121,10 @@ export const store = {
   players: () => profiles.list,
   current: () => profiles.list.find(p => p.id === profiles.active) || null,
   addPlayer(name) {
+    const same = profiles.list.find(p => p.name.trim().toLowerCase() === name.trim().toLowerCase());
+    if (same) return same.id; // never make a second player with the same name
     const id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-    const colour = PLAYER_COLOURS[profiles.list.length % PLAYER_COLOURS.length];
+    const colour = PLAYER_COLOURS.find(c => !profiles.list.some(p => p.colour === c)) || PLAYER_COLOURS[profiles.list.length % PLAYER_COLOURS.length];
     profiles.list.push({ id, name: name.trim() || 'Player', colour, createdAt: Date.now() });
     write(PROFILES_KEY, profiles);
     write(playerKey(id), fresh());
