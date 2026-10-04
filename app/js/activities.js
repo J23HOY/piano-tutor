@@ -30,6 +30,22 @@ function directionHint(played, target) {
   return `${size} ${dir}`;
 }
 
+// When a note starts, the mic's first reading can wobble (an octave out, or a harmonic)
+// before it settles on the real pitch. So a wrong note heard by the mic is held back
+// briefly, and dropped if the right note turns up in the meantime.
+export const MIC_GRACE_MS = 280;
+export function graceWrong() {
+  let t = null;
+  return {
+    wrong(source, fn) {
+      if (source !== 'mic') return fn();
+      clearTimeout(t);
+      t = setTimeout(() => { t = null; fn(); }, MIC_GRACE_MS);
+    },
+    cancel() { clearTimeout(t); t = null; },
+  };
+}
+
 // Height left between an element's top and the on-screen keys, minus `reserve` for things below it.
 export function spaceBelow(el, reserve) {
   return window.innerHeight - el.getBoundingClientRect().top - dock.height - reserve;
@@ -61,10 +77,12 @@ export function runFind(el, step, onDone) {
   const dots = card.querySelector('.dots');
   const drawDots = () => { dots.innerHTML = Array.from({ length: want }, (_, i) => `<span class="dot ${i < found.length ? 'on' : ''}"></span>`).join(''); };
   drawDots();
+  const grace = graceWrong();
   const off = input.on(({ midi, source }) => {
     if (found.length >= want) return;
     const ok = t.pc != null ? pcOf(midi) === t.pc : sameNote(midi, t.midi, source);
     if (ok) {
+      grace.cancel();
       if (step.distinct && found.includes(midi)) { fb.textContent = `Yes, that's ${label} again. Now find a different one.`; fb.className = 'feedback'; return; }
       found.push(midi);
       kb.mark(midi, 'good');
@@ -73,14 +91,14 @@ export function runFind(el, step, onDone) {
       fb.textContent = found.length >= want ? 'All found!' : `Yes, that's ${label}. ${want - found.length} to go.`;
       fb.className = 'feedback good';
       if (found.length >= want) { off(); setTimeout(() => onDone({ ok: true }), 900); }
-    } else {
+    } else grace.wrong(source, () => {
       kb.mark(midi, 'bad', 700);
       dock.wrong(midi);
       fb.textContent = `That's ${short(midi)}. ${step.hint || `Look for the blue dots: those are the ${label}s.`}`;
       fb.className = 'feedback bad';
-    }
+    });
   });
-  return () => { off(); dock.hint(null); };
+  return () => { off(); grace.cancel(); dock.hint(null); };
 }
 
 // ---------------------------------------------------------------- gym (reading cards)
@@ -160,12 +178,16 @@ export function runGym(el, opts, onDone) {
     if (!l || !current) return;
     answer(l === current[0], l, l === current[0] ? '' : directionHint(midiOf(l + current.slice(-1)), midiOf(current)));
   };
+  const grace = graceWrong();
   const off = input.on(({ midi, source }) => {
     if (!current || busy) return;
     const target = midiOf(current);
-    if (sameNote(midi, target, source)) answer(true);
+    if (sameNote(midi, target, source)) { grace.cancel(); answer(true); }
     else if (source === 'mic' && performance.now() - startAt < 500) return; // previous note still ringing
-    else { dock.wrong(midi); answer(false, short(midi), directionHint(midi, target)); }
+    else {
+      const card = current;
+      grace.wrong(source, () => { if (current === card && !busy) { dock.wrong(midi); answer(false, short(midi), directionHint(midi, target)); } });
+    }
   });
   function finish() {
     off();
@@ -178,7 +200,7 @@ export function runGym(el, opts, onDone) {
     onDone(summary);
   }
   next();
-  return () => { off(); dock.hint(null); };
+  return () => { off(); grace.cancel(); dock.hint(null); };
 }
 
 export function gymSummaryHTML(r) {
@@ -294,10 +316,12 @@ export function runPlay(el, step, onDone, ctx = {}) {
     dock.hint(keyHints ? events[idx].midis : null);
     els(idx)[0]?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
   }
+  const grace = graceWrong();
   function onWaitNote({ midi, source }) {
     if (stopPlayback || idx >= events.length) return;
     const hit = remaining.findIndex(m => sameNote(midi, m, source));
     if (hit >= 0) {
+      grace.cancel();
       if (firstAt == null) firstAt = performance.now();
       remaining.splice(hit, 1);
       if (!remaining.length) { advanceWait(); if (idx < events.length) say(''); }
@@ -305,12 +329,16 @@ export function runPlay(el, step, onDone, ctx = {}) {
     }
     // Mic: ignore the previous note still ringing.
     if (source === 'mic' && (performance.now() - lastAdvanceAt < 700) && prevMidis.some(m => sameNote(midi, m, 'mic'))) return;
-    mistakes[idx]++;
-    const want = remaining[0];
-    say(`You played ${short(midi)}. Play ${short(want)} instead: ${directionHint(midi, want)}.`, 'bad change');
-    dock.wrong(midi);
-    dock.hint(remaining);
-    els(idx).forEach(e => { e.classList.add('wrong'); setTimeout(() => e.classList.remove('wrong'), 450); });
+    const at = idx;
+    grace.wrong(source, () => {
+      if (idx !== at || idx >= events.length) return;
+      mistakes[idx]++;
+      const want = remaining[0];
+      say(`You played ${short(midi)}. Play ${short(want)} instead: ${directionHint(midi, want)}.`, 'bad change');
+      dock.wrong(midi);
+      dock.hint(remaining);
+      els(idx).forEach(e => { e.classList.add('wrong'); setTimeout(() => e.classList.remove('wrong'), 450); });
+    });
   }
   function finishWait() {
     const clean = mistakes.filter(m => m === 0).length;
@@ -375,11 +403,16 @@ export function runPlay(el, step, onDone, ctx = {}) {
     });
     if (best < 0) {
       if (at < clock.timeOf(0) - spbMs * 0.5) return; // noodling during the count-in
-      state.wrong++;
-      dock.wrong(midi);
-      say(`${short(midi)}: not in the music here`, 'bad');
+      const r = run;
+      grace.wrong(source, () => {
+        if (run !== r) return;
+        state.wrong++;
+        dock.wrong(midi);
+        say(`${short(midi)}: not in the music here`, 'bad');
+      });
       return;
     }
+    grace.cancel();
     const k = state.left[best].findIndex(m => sameNote(midi, m, source));
     state.left[best].splice(k, 1);
     if (state.hits[best] == null) state.hits[best] = bestErr;
@@ -499,7 +532,13 @@ export function runPlay(el, step, onDone, ctx = {}) {
   }
   else resetWait();
   // Re-fit the music if the window changes size while nothing is in progress.
-  const onResize = () => { if (!run && !stopPlayback && (mode === 'along' || (idx === 0 && firstAt == null))) mode === 'along' ? render() : resetWait(); };
+  // (Only on a real width change: on tablets the height jiggles as the address bar hides.)
+  let lastWidth = scoreEl.clientWidth;
+  const onResize = () => {
+    if (Math.abs(scoreEl.clientWidth - lastWidth) < 40) return;
+    lastWidth = scoreEl.clientWidth;
+    if (!run && !stopPlayback && (mode === 'along' || (idx === 0 && firstAt == null && !mistakes.some(Boolean)))) mode === 'along' ? render() : resetWait();
+  };
   window.addEventListener('resize', onResize);
-  return () => { offNotes(); stopAll(); dock.hint(null); window.removeEventListener('resize', onResize); };
+  return () => { offNotes(); grace.cancel(); stopAll(); dock.hint(null); window.removeEventListener('resize', onResize); };
 }

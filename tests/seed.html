@@ -33,5 +33,5 @@ if (preset === 'midway') {
 }
 if (p.get('gap')) base.lastActiveAt = now - Number(p.get('gap')) * DAY;
 localStorage.setItem('pianoTutor.v1', JSON.stringify(base));
-location.replace('../app/' + (p.get('sim') ? '?sim=' + p.get('sim') + '&simgap=' + (p.get('simgap') || 150) + '&simdelay=' + (p.get('simdelay') || 1000) + (p.get('autostart') ? '&autostart=1' : '') : '') + '#' + (p.get('to') || '/today'));
+location.replace('../app/' + (p.get('sim') ? '?sim=' + p.get('sim') + '&simgap=' + (p.get('simgap') || 150) + '&simdelay=' + (p.get('simdelay') || 1000) + (p.get('autostart') ? '&autostart=1' : '') + (p.get('simsrc') ? '&simsrc=' + p.get('simsrc') : '') : '') + '#' + (p.get('to') || '/today'));
 </script>

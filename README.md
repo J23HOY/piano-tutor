@@ -36,6 +36,12 @@ upwards, listens via mic (or USB MIDI), gives feedback and saves progress.
     best-fitting triad. `tests/chroma.html` checks it on synthesised chords (all correct,
     including C vs Am). Not yet tried on the real piano.
 
+- 4 Oct 2026: v0.2.1. Jonny (first real-piano test): "it's initially saying G is wrong, then
+  correcting itself". The mic's first reading of a note can wobble before it settles, so
+  wrong notes heard by the mic are now held for 280 ms and dropped if the right note follows.
+  Chords are only called wrong after ~0.4 s of a settled, clearly different chord. Also,
+  resizes that only change the height no longer reset a piece.
+
 ## Links
 - Repo: https://github.com/J23HOY/piano-tutor
 - **App (tablet):** https://j23hoy.github.io/piano-tutor/app/
@@ -49,7 +55,7 @@ upwards, listens via mic (or USB MIDI), gives feedback and saves progress.
 - Dev: `python -m http.server 8765 --bind 127.0.0.1` from the repo root, then
   `tests/shot.sh "preset=midway&to=/today" name` takes screenshots with seeded progress.
   Add `&sim=60,62,64` to play notes into the app (`60+64+67` = chord, `r` = skip a step,
-  `&simgap=ms`, `&simdelay=ms`, `&autostart=1` starts Play along). Presets: `new`, `fresh`, `placed`, `midway`.
+  `&simgap=ms`, `&simdelay=ms`, `&autostart=1` starts Play along, `&simsrc=mic` pretends the notes came from the mic). Presets: `new`, `fresh`, `placed`, `midway`.
   `tests/chroma.html` (headless `--dump-dom`) prints the chord-recognition results.
   On a desk computer, the keys A W S E D F T G Y H U J K play C4–C5 (Z/X shift octave).
 

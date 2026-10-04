@@ -106,11 +106,12 @@ if (sim) {
   // each comma-separated step is one note, a chord (60+64+67) or 'r' (nothing), `simgap` ms apart
   const steps = sim.split(',');
   const gap = Number(new URLSearchParams(location.search).get('simgap')) || 150;
+  const simSrc = new URLSearchParams(location.search).get('simsrc') || 'keys';
   let i = 0;
   const tick = () => {
     if (i >= steps.length) return;
     const st = steps[i++];
-    if (st !== 'r') st.split(/[+ ]/).map(Number).forEach((m, k) => setTimeout(() => input.emit(m, 'keys'), k * 30));
+    if (st !== 'r') st.split(/[+ ]/).map(Number).forEach((m, k) => setTimeout(() => input.emit(m, simSrc), k * 30));
     setTimeout(tick, gap);
   };
   setTimeout(tick, Number(new URLSearchParams(location.search).get('simdelay')) || 1000);

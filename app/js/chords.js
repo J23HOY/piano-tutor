@@ -46,7 +46,8 @@ export function chordScore(chroma, sym) {
 // Repeated chords (C then C again) need a fresh strike.
 export function listenChord(getTarget, onHit, { onWrong } = {}) {
   let recent = [];          // notes from MIDI / keys: { pc, at }
-  let streak = 0, wrongStreak = 0, armed = true, wrongArmed = true;
+  let wrongTimer = null;
+  let streak = 0, wrongStreak = 0, armed = true, wrongArmed = true, onsetAt = 0;
   const offNotes = input.on(e => {
     if (e.source === 'mic') return; // the mic uses chroma below
     const target = getTarget();
@@ -56,13 +57,14 @@ export function listenChord(getTarget, onHit, { onWrong } = {}) {
     recent.push({ pc: pcOf(e.midi), at: now });
     const pcs = chordPcs(target);
     const have = new Set(recent.map(r => r.pc));
+    clearTimeout(wrongTimer);
     if (pcs.slice(0, 3).every(p => have.has(p))) { recent = []; onHit(); }
-    else if (recent.length >= 3 && !pcs.includes(pcOf(e.midi))) onWrong?.('a different chord');
+    else if (recent.length >= 3 && !pcs.includes(pcOf(e.midi))) wrongTimer = setTimeout(() => onWrong?.('a different chord'), 400);
   });
   const offChroma = input.onChroma(({ chroma, rms, onset }) => {
     const target = getTarget();
     if (!chroma) { armed = true; wrongArmed = true; streak = wrongStreak = 0; return; } // silence re-arms
-    if (onset) { armed = true; wrongArmed = true; }
+    if (onset) { armed = true; wrongArmed = true; onsetAt = performance.now(); wrongStreak = 0; }
     if (!target || !armed) return;
     const s = chordScore(chroma, target);
     if (s.ok) {
@@ -70,10 +72,13 @@ export function listenChord(getTarget, onHit, { onWrong } = {}) {
       if (++streak >= 2) { streak = 0; armed = false; onHit(); }
     } else {
       streak = 0;
-      if (s.best !== target && ++wrongStreak >= 4 && wrongArmed) { wrongArmed = false; onWrong?.(chordLabel(s.best)); }
+      // only call it wrong once the sound has settled (~0.4 s of a clearly different chord)
+      if (s.best !== target && ++wrongStreak >= 8 && wrongArmed && performance.now() - onsetAt > 400) {
+        wrongArmed = false; onWrong?.(chordLabel(s.best));
+      }
     }
   });
-  return () => { offNotes(); offChroma(); };
+  return () => { offNotes(); offChroma(); clearTimeout(wrongTimer); };
 }
 
 export const voicingMidis = names => names.map(midiOf);
