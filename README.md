@@ -42,6 +42,11 @@ upwards, listens via mic (or USB MIDI), gives feedback and saves progress.
   Chords are only called wrong after ~0.4 s of a settled, clearly different chord. Also,
   resizes that only change the height no longer reset a piece.
 
+- 4 Oct 2026: v0.2.2. Jonny asked to see the key he's meant to press, to tell app errors
+  from his own. The target key is now always marked on the bottom keys in pieces ("Show keys"
+  on by default, can be turned off), and a readout beside the keys shows "Play E4 / Heard D4"
+  (blue when it matches, red when it doesn't).
+
 ## Links
 - Repo: https://github.com/J23HOY/piano-tutor
 - **App (tablet):** https://j23hoy.github.io/piano-tutor/app/

@@ -235,7 +235,7 @@ export function runPlay(el, step, onDone, ctx = {}) {
   let mode = ctx.mode || step.mode || 'wait';
   let bpm = stepRec().tempo || Math.max(40, Math.round(targetBpm * 0.7 / 2) * 2);
   let loop = { from: 1, to: nBars, repeat: false };
-  let keyHints = !!store.get().settings.keyHints;
+  let keyHints = store.get().settings.keyHints ?? true; // on unless you've turned it off
   let ex, events, score, stopPlayback = null, run = null, runs = [];
 
   el.innerHTML = '';
