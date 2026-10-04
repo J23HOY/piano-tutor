@@ -2,8 +2,11 @@
 
 import { store, dayKey } from './store.js';
 import { input } from './input.js';
-import { TRACKS, UNITS, LESSONS, FOUNDATION_ORDER, PLACEMENT_POOL, PLACEMENT_SKIPS, unitOf } from './curriculum.js';
+import { TRACKS, UNITS, LESSONS, FOUNDATION_ORDER, ALL_LESSONS, PLACEMENT_POOL, PLACEMENT_SKIPS, unitOf, trackLessons, trackOf } from './curriculum.js';
 import { runFind, runGym, runPlay, gymSummaryHTML } from './activities.js';
+import { runChord, runChords, runSong } from './chordplay.js';
+import { input as inputBus, latencyFor, DEFAULT_LATENCY } from './input.js';
+import { startClock } from './audio.js';
 import { renderNotes, renderScore } from './notation.js';
 import { createKeyboard } from './keyboard.js';
 import { unlockedNotes, noteState } from './srs.js';
@@ -14,9 +17,13 @@ const go = hash => { location.hash = hash; };
 const DAY = 86400000;
 
 // ---------------------------------------------------------------- helpers
-export function nextLessonId() {
+export function nextLessonId(trackId = 'foundation') {
   const s = store.get();
-  return FOUNDATION_ORDER.find(id => !s.lessons[id]?.done) || null;
+  return trackLessons(trackId).find(id => !s.lessons[id]?.done) || null;
+}
+export function trackOpen(t) {
+  if (t.comingSoon) return false;
+  return !t.requires || !!store.get().lessons[t.requires]?.done;
 }
 function lastSessionAt() {
   const s = store.get();
@@ -42,7 +49,7 @@ function lessonCount() {
 function reviewPiece() {
   const s = store.get();
   const cands = [];
-  FOUNDATION_ORDER.forEach(id => {
+  ALL_LESSONS.forEach(id => {
     if (!s.lessons[id]?.done) return;
     LESSONS[id].steps.forEach((st, i) => {
       if (st.type !== 'play') return;
@@ -129,7 +136,15 @@ export function renderToday(root, params) {
     const started = Object.keys(s.lessons[nextId]?.steps || {}).length > 0;
     items.push({ kind: 'lesson', icon: '♪', title: `${started ? 'Continue' : 'Next lesson'}: ${L.title}`, sub: UNITS[unitOf(nextId)].title + (L.milestone ? ' · milestone' : ''), mins: L.minutes, hash: `#/lesson/${nextId}` });
   }
-  if (!longGap && review) items.push({ kind: 'review', icon: '↺', title: `Polish: ${review.title}`, sub: review.best ? `Best so far ${Math.round(review.best * 100)}% clean` : 'Play it through once more', mins: 3, hash: `#/lesson/${review.id}?step=${review.i}&solo=1` });
+  const songsTrack = TRACKS.find(t => t.id === 'songs');
+  const nextSong = trackOpen(songsTrack) ? nextLessonId('songs') : null;
+  if (nextSong) {
+    const L = LESSONS[nextSong];
+    items.push({ kind: 'lesson', icon: '♫', title: `Songs & Chords: ${L.title}`, sub: UNITS[unitOf(nextSong)].title + (L.milestone ? ' · milestone' : ''), mins: L.minutes, hash: `#/lesson/${nextSong}` });
+  }
+  if (!longGap && review) items.push({ kind: 'review', icon: '↺', title: `Polish: ${review.title}`,
+    sub: review.best != null ? `Play along · best so far ${Math.round(review.best * 100)}%` : 'Play along with the metronome', mins: 3,
+    hash: `#/lesson/${review.id}?step=${review.i}&solo=1&mode=along` });
 
   let recap = '';
   if (gap != null && gap >= 3) {
@@ -146,7 +161,7 @@ export function renderToday(root, params) {
   }
 
   const nextMilestone = FOUNDATION_ORDER.find(id => LESSONS[id].milestone && !s.lessons[id]?.done);
-  const toMilestone = nextMilestone ? FOUNDATION_ORDER.indexOf(nextMilestone) - FOUNDATION_ORDER.indexOf(nextId) + 1 : 0;
+  const toMilestone = nextMilestone && nextId ? FOUNDATION_ORDER.indexOf(nextMilestone) - FOUNDATION_ORDER.indexOf(nextId) + 1 : 0;
   const totalMins = items.reduce((a, i) => a + i.mins, 0);
 
   root.innerHTML = `<section class="page today">
@@ -164,7 +179,7 @@ export function renderToday(root, params) {
         ${items.map((it, i) => `<li><a href="${it.hash}" data-i="${i}"><span class="ico">${it.icon}</span>
           <span class="txt"><b>${esc(it.title)}</b><span>${esc(it.sub)}</span></span><span class="mins">${it.mins} min</span></a></li>`).join('')}
       </ol>
-      ${items.length ? `<button class="big" data-start>Start session</button>` : `<p>You've finished everything in Foundation. New tracks are on the way.</p>`}
+      ${items.length ? `<button class="big" data-start>Start session</button>` : `<p>You've finished everything that's open. New lessons are on the way.</p>`}
     </div>
     ${nextMilestone ? `<div class="card milestone-next"><span class="flag">⚑</span><div><b>Next milestone:</b> ${esc(LESSONS[nextMilestone].title)}
       <span class="muted">· ${toMilestone <= 1 ? 'this lesson' : `${toMilestone} lessons away`}</span></div></div>` : ''}
@@ -179,11 +194,10 @@ export function renderToday(root, params) {
 // ---------------------------------------------------------------- path
 export function renderPath(root) {
   const s = store.get();
-  const nextId = nextLessonId();
   root.innerHTML = `<section class="page path">
     <h1>Your path</h1>
-    ${TRACKS.map(t => `<div class="track ${t.comingSoon ? 'soon' : ''}">
-      <div class="track-head"><h2>${t.title}</h2><p class="muted">${t.blurb}</p></div>
+    ${TRACKS.map(t => { const nextId = nextLessonId(t.id); const open = trackOpen(t); return `<div class="track ${t.comingSoon ? 'soon' : ''} ${open ? '' : 'locked'}">
+      <div class="track-head"><h2>${t.title}</h2><p class="muted">${t.blurb}</p>${!open && t.requiresText ? `<p class="soon-note">${t.requiresText} You can still peek at the lessons.</p>` : ''}</div>
       ${t.comingSoon ? `<p class="soon-note">${t.comingSoon}</p>` : t.units.map((u, ui) => `
         <div class="unit"><h3><span class="unum">${ui + 1}</span>${UNITS[u].title}</h3>
           <ul class="lessons">${UNITS[u].lessons.map(id => {
@@ -194,7 +208,7 @@ export function renderPath(root) {
               <span class="lt">${L.title}${L.milestone ? ' <span class="flag" title="Milestone">⚑</span>' : ''}</span>
               <span class="muted small">${rec?.viaPlacement ? 'placed' : `${L.minutes} min`}</span></a></li>`;
           }).join('')}</ul></div>`).join('')}
-    </div>`).join('')}
+    </div>`; }).join('')}
   </section>`;
 }
 
@@ -237,7 +251,7 @@ export function renderLesson(root, params, id) {
     const first = !store.get().lessons[id]?.done;
     store.update(s => { const rec = store.lesson(id); rec.done = true; rec.completedAt = rec.completedAt || Date.now(); });
     if (first) store.log('lesson', id, L.title, 'Lesson complete');
-    const nextId = nextLessonId();
+    const nextId = nextLessonId(trackOf(id)?.id);
     const following = session.active;
     body.innerHTML = `<div class="complete">
       ${L.milestone && first ? `<div class="milestone-banner"><span class="flag">⚑</span><div><b>Milestone reached</b><p>${esc(L.milestone)}</p></div></div>` : ''}
@@ -287,10 +301,16 @@ export function renderLesson(root, params, id) {
         wrap.querySelector('[data-cont]').onclick = () => finish({ best: r.right / r.total });
       });
       nav.innerHTML = `${i > 0 ? '<button class="secondary" data-prev>← Back</button>' : ''}<button class="link" data-skip>Skip</button>`;
+    } else if (st.type === 'chord' || st.type === 'chords' || st.type === 'song') {
+      const wrap = document.createElement('div');
+      body.appendChild(wrap);
+      const run = { chord: runChord, chords: runChords, song: runSong }[st.type];
+      cleanup = run(wrap, { ...st, id }, r => finish({ best: r.best ?? 1 }));
+      nav.innerHTML = `${i > 0 ? '<button class="secondary" data-prev>← Back</button>' : ''}<button class="link" data-skip>Skip</button>`;
     } else if (st.type === 'play') {
       const wrap = document.createElement('div');
       body.appendChild(wrap);
-      cleanup = runPlay(wrap, st, r => finish({ best: r.accuracy, passed: r.passed }), { lessonId: id });
+      cleanup = runPlay(wrap, st, r => finish({ best: r.accuracy, passed: r.passed }), { lessonId: id, stepIdx: i, mode: params.get('mode') });
       nav.innerHTML = `${i > 0 ? '<button class="secondary" data-prev>← Back</button>' : ''}<button class="link" data-skip>Skip</button>`;
     }
     nav.querySelector('[data-prev]')?.addEventListener('click', () => show(i - 1));
@@ -354,15 +374,17 @@ function masteryHTML(names) {
 export function renderProgress(root) {
   const s = store.get();
   const { done, total } = lessonCount();
+  const songIds = trackLessons('songs');
+  const songsDone = songIds.filter(id => s.lessons[id]?.done).length;
   const known = unlockedNotes();
   // practice chart: last 28 days
   const days = Array.from({ length: 28 }, (_, i) => { const t = Date.now() - (27 - i) * DAY; return { key: dayKey(t), d: new Date(t) }; });
   const maxS = Math.max(600, ...days.map(d => s.practice[d.key] || 0));
   const weekS = days.slice(-7).reduce((a, d) => a + (s.practice[d.key] || 0), 0);
   const allS = Object.values(s.practice).reduce((a, b) => a + b, 0);
-  const milestones = FOUNDATION_ORDER.filter(id => LESSONS[id].milestone);
+  const milestones = ALL_LESSONS.filter(id => LESSONS[id].milestone);
   const pieces = [];
-  FOUNDATION_ORDER.forEach(id => LESSONS[id].steps.forEach((st, i) => {
+  ALL_LESSONS.forEach(id => LESSONS[id].steps.forEach((st, i) => {
     const rec = s.lessons[id]?.steps?.[i];
     if (st.type === 'play' && rec?.best != null) pieces.push({ id, i, title: st.title, best: rec.best });
   }));
@@ -375,13 +397,15 @@ export function renderProgress(root) {
         <p class="levelname">Foundation <span class="muted">· the road to Grade 1</span></p>
         <div class="bar"><span style="width:${(done / total) * 100}%"></span></div>
         <p class="muted">${done} of ${total} lessons</p>
+        <p class="levelname">Songs &amp; Chords</p>
+        <div class="bar"><span style="width:${(songsDone / songIds.length) * 100}%"></span></div>
+        <p class="muted">${songsDone} of ${songIds.length} lessons</p>
         <h3>Milestones</h3>
         <ul class="milestones">${milestones.map(id => {
           const rec = s.lessons[id];
           return `<li class="${rec?.done ? 'done' : ''}"><span class="flag">⚑</span> ${esc(LESSONS[id].milestone)}
             ${rec?.done ? `<span class="muted small">· ${new Date(rec.completedAt).toLocaleDateString()}</span>` : ''}</li>`;
         }).join('')}
-          <li class="future"><span class="flag">⚑</span> Songs &amp; Chords: first song with chords</li>
           <li class="future"><span class="flag">⚑</span> Grade 1 standard</li></ul>
       </div>
       <div class="card">
@@ -429,6 +453,14 @@ export function renderSettings(root) {
       <div class="row"><button class="secondary" data-midi>Connect a USB MIDI keyboard</button><span class="pill" data-midistate></span></div>
     </div>
     <div class="card">
+      <h2>Timing</h2>
+      <p class="muted">Play along scores your timing. The mic needs a moment to recognise a note, so the app allows for that delay.
+        If it keeps saying you're late (or early) when you're not, calibrate: play any key on each click.</p>
+      <div class="row"><button data-cal>Calibrate timing</button><span class="pill" data-calres></span></div>
+      <div class="beats cal-beats" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <label class="check"><input type="checkbox" data-click ${s.settings.click !== false ? 'checked' : ''}> Metronome clicks during Play along</label>
+    </div>
+    <div class="card">
       <h2>Display</h2>
       <label class="check"><input type="checkbox" data-touch ${s.settings.touchKeyboard ? 'checked' : ''}> Show on-screen keys during lessons (handy away from the piano)</label>
       <label class="slider">Theme
@@ -463,6 +495,36 @@ export function renderSettings(root) {
   placeThr();
   const timer = setInterval(() => { level.style.width = (input.level * 100).toFixed(0) + '%'; }, 60);
   $('[data-thr-in]').oninput = e => { store.update(s => { s.settings.micThreshold = Number(e.target.value); }); placeThr(); };
+  $('[data-click]').onchange = e => store.update(s => { s.settings.click = e.target.checked; });
+  const showCal = () => {
+    const src = inputBus.lastSource || (inputBus.status.mic === 'on' ? 'mic' : 'keys');
+    $('[data-calres]').textContent = `${src}: allowing ${Math.round(latencyFor(src))} ms`;
+  };
+  showCal();
+  let calClock = null;
+  $('[data-cal]').onclick = () => {
+    calClock?.stop();
+    const taps = [];
+    const btn = $('[data-cal]');
+    btn.textContent = 'Listen… then play on each click';
+    const offTap = inputBus.on(e => taps.push(e));
+    const dots = root.querySelectorAll('.cal-beats i');
+    calClock = startClock({ bpm: 80, beatsPerBar: 4, countInBars: 1, onBeat: b => {
+      dots.forEach((d, k) => d.className = k === ((b % 4) + 4) % 4 ? (b < 0 ? 'on count' : 'on') : '');
+      if (b < 8) return;
+      calClock.stop(); offTap(); btn.textContent = 'Calibrate timing';
+      dots.forEach(d => d.className = '');
+      // offset of each tap from its nearest click, using the raw (uncorrected) time
+      const offs = taps.map(t => { const beat = Math.round((t.raw - calClock.timeOf(0)) / calClock.spb / 1000); return beat >= 0 && beat < 8 ? t.raw - calClock.timeOf(beat) : null; })
+        .filter(v => v != null && Math.abs(v) < 400).sort((a, b) => a - b);
+      if (offs.length < 4) { $('[data-calres]').textContent = 'Not enough notes heard. Try again.'; return; }
+      const median = offs[Math.floor(offs.length / 2)];
+      const src = taps.at(-1).source;
+      store.update(st => { st.settings.latency = { ...(st.settings.latency || {}), [src]: Math.max(0, Math.round(median)) }; });
+      $('[data-calres]').textContent = `${src}: ${Math.round(median)} ms delay saved`;
+    } });
+  };
+  const stopCal = () => calClock?.stop();
   $('[data-touch]').onchange = e => store.update(s => { s.settings.touchKeyboard = e.target.checked; });
   $('[data-theme]').onchange = e => { store.update(s => { s.settings.theme = e.target.value; }); document.documentElement.dataset.theme = e.target.value; };
   $('[data-export]').onclick = () => {
@@ -485,6 +547,6 @@ export function renderSettings(root) {
     if (!armed) { armed = true; e.target.textContent = 'Tap again to erase everything'; setTimeout(() => { armed = false; e.target.textContent = 'Erase all progress'; }, 4000); return; }
     store.reset(); go('#/welcome');
   };
-  return () => { offStatus(); offNote(); clearInterval(timer); };
+  return () => { offStatus(); offNote(); clearInterval(timer); stopCal(); };
 }
 const midiName = m => { const n = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B']; return n[m % 12] + (Math.floor(m / 12) - 1); };

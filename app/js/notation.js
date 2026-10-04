@@ -138,3 +138,21 @@ export function renderNotes(container, names, { scale = 1.3, width } = {}) {
   vUp.draw(ctx, treble);
   vDown.draw(ctx, bass);
 }
+
+// One chord (notes stacked) on a single staff. clef: 'treble' | 'bass'.
+export function renderChord(container, names, { clef = 'treble', scale = 1.3, width = 220 } = {}) {
+  const F = VF();
+  container.innerHTML = '';
+  const renderer = new F.Renderer(container, F.Renderer.Backends.SVG);
+  renderer.resize(width, 150 * scale);
+  const ctx = renderer.getContext();
+  ctx.scale(scale, scale);
+  const stave = new F.Stave(5, 15, width / scale - 10).addClef(clef);
+  stave.setContext(ctx).draw();
+  const ps = names.map(parsePitch).sort((a, b) => a.midi - b.midi);
+  const note = new F.StaveNote({ clef, keys: ps.map(p => p.key), duration: 'w' });
+  ps.forEach((p, i) => { if (p.acc) note.addModifier(new F.Accidental(p.acc === '#' ? '#' : 'b'), i); });
+  const v = new F.Voice({ num_beats: 4, beat_value: 4 }).setMode(F.Voice.Mode.SOFT).addTickables([note]);
+  new F.Formatter().joinVoices([v]).format([v], stave.getNoteEndX() - stave.getNoteStartX() - 10);
+  v.draw(ctx, stave);
+}

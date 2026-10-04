@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Chroma test</title>
+<pre id="out">running…</pre>
+<script type="module">
+// Renders piano-ish chords offline, takes an FFT like the mic analyser does, and runs the
+// app's computeChroma on it. Prints energy per note letter and whether chord matching passes.
+import { computeChroma } from '../app/js/input.js';
+import { chordScore } from '../app/js/chords.js';
+const NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const SR = 48000, N = 8192;
+// Synthesise ~0.17 s of a struck chord, 0.25 s after the attack (plain maths, no audio engine).
+function render(midis, room = 0) {
+  const x = new Float32Array(N), t0 = 0.25;
+  midis.forEach(m => {
+    const f = 440 * 2 ** ((m - 69) / 12);
+    [[1, .6], [2, .4], [3, .25], [4, .15], [5, .1], [6, .07], [7, .04]].forEach(([k, a]) => {
+      const fk = f * k * (1 + 0.0004 * k * k), ph = Math.random() * 6.28;
+      for (let i = 0; i < N; i++) { const t = t0 + i / SR; x[i] += a * 0.3 * Math.exp(-t * k * 1.5) * Math.sin(2 * Math.PI * fk * t + ph); }
+    });
+  });
+  if (room) for (let i = 0; i < N; i++) x[i] += (Math.random() * 2 - 1) * room; // background noise
+  return spectrumDb(x);
+}
+function spectrumDb(x) {
+  const re = new Float64Array(N), im = new Float64Array(N);
+  for (let i = 0; i < N; i++) { const w = 0.42 - 0.5 * Math.cos(2 * Math.PI * i / N) + 0.08 * Math.cos(4 * Math.PI * i / N); re[i] = x[i] * w; }
+  for (let i = 1, j = 0; i < N; i++) { let b = N >> 1; for (; j & b; b >>= 1) j ^= b; j ^= b; if (i < j) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; } }
+  for (let len = 2; len <= N; len <<= 1) {
+    const ang = -2 * Math.PI / len;
+    for (let i = 0; i < N; i += len) for (let k = 0; k < len / 2; k++) {
+      const wr = Math.cos(ang * k), wi = Math.sin(ang * k);
+      const ur = re[i + k], ui = im[i + k];
+      const vr = re[i + k + len / 2] * wr - im[i + k + len / 2] * wi, vi = re[i + k + len / 2] * wi + im[i + k + len / 2] * wr;
+      re[i + k] = ur + vr; im[i + k] = ui + vi; re[i + k + len / 2] = ur - vr; im[i + k + len / 2] = ui - vi;
+    }
+  }
+  const out = new Float32Array(N / 2);
+  for (let i = 0; i < N / 2; i++) out[i] = 20 * Math.log10(Math.hypot(re[i], im[i]) / N + 1e-12);
+  return out;
+}
+const tests = [
+  ['C (C4 E4 G4)', [60, 64, 67], 'C'],
+  ['F (C4 F4 A4)', [60, 65, 69], 'F'],
+  ['G (B3 D4 G4)', [59, 62, 67], 'G'],
+  ['Am (C4 E4 A4)', [60, 64, 69], 'Am'],
+  ['C low (C3 E3 G3)', [48, 52, 55], 'C'],
+  ['F root (F3 A3 C4)', [53, 57, 60], 'F'],
+];
+const lines = [];
+for (const noise of [0, 0.01, 0.03]) {
+  lines.push(`--- background noise ${noise}`);
+  for (const [name, midis, want] of tests) {
+    const c = computeChroma(render(midis, noise), SR, N);
+    const top = c.map((v, i) => [NAMES[i], v]).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([n, v]) => `${n}:${v.toFixed(2)}`).join(' ');
+    const scores = ['C', 'F', 'G', 'Am', 'Dm', 'Em'].map(ch => `${ch}=${chordScore(c, ch).ok ? 'Y' : '.'}`).join(' ');
+    lines.push(`${name.padEnd(18)} want ${want.padEnd(3)} | ${scores} | ${top}`);
+  }
+}
+out.textContent = lines.join('\n');
+</script>

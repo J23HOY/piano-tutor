@@ -10,7 +10,12 @@
 //   text  – explanation, optional `visual` (keyboard or staff)
 //   find  – find keys on the piano by letter (any octave) or exact key
 //   gym   – note-reading cards drawn from `notes`
-//   play  – a piece/exercise in wait mode (score waits for the right note)
+//   play  – a piece/exercise. mode 'wait' (score waits for the right note, default) or
+//           'along' (metronome, notes and timing scored, tempo ladder)
+//   chord – play one chord a few times      { chord, voicing, count, fingers, hand }
+//   chords – a chord progression, waits for each change   { seq, rounds, voicings, tip }
+//   song  – chords over lyrics, waits for each change while you sing   { lines, credit }
+//           lines use [Chord] markers: '[C]Twinkle twinkle [F]little [C]star'
 
 export const TRACKS = [
   {
@@ -23,8 +28,9 @@ export const TRACKS = [
     id: 'songs',
     title: 'Songs & Chords',
     blurb: 'Chords, left-hand patterns and lead sheets, so you can play the songs you know and sing along.',
-    units: [],
-    comingSoon: 'Opens after Foundation. Starts with the three chords behind hundreds of songs.',
+    units: ['s1', 's2', 's3'],
+    requires: 'l4-1',
+    requiresText: 'Opens once you\'ve done "Right hand: C D E F G" in Foundation.',
   },
   {
     id: 'classical',
@@ -39,9 +45,12 @@ export const UNITS = {
   u1: { title: 'Finding your way around', lessons: ['l1-1', 'l1-2'] },
   u2: { title: 'The grand staff', lessons: ['l2-1', 'l2-2', 'l2-3'] },
   u3: { title: 'Rhythm basics', lessons: ['l3-1', 'l3-2'] },
-  u4: { title: 'Middle C position: right hand', lessons: ['l4-1', 'l4-2', 'l4-3', 'l4-4'] },
+  u4: { title: 'Middle C position: right hand', lessons: ['l4-1', 'l4-2', 'l4-3', 'l4-4', 'l4-5'] },
   u5: { title: 'Middle C position: left hand', lessons: ['l5-1', 'l5-2', 'l5-3'] },
   u6: { title: 'Skips and C position', lessons: ['l6-1', 'l6-2', 'l6-3'] },
+  s1: { title: 'Your first chords', lessons: ['ls1-1', 'ls1-2', 'ls1-3'] },
+  s2: { title: 'Three-chord songs', lessons: ['ls2-1', 'ls2-2', 'ls2-3'] },
+  s3: { title: 'Minor chords and the pop progression', lessons: ['ls3-1', 'ls3-2', 'ls3-3'] },
 };
 
 // Notes known once placement says the reading basics are solid.
@@ -149,8 +158,11 @@ export const LESSONS = {
                <li><b>Semibreve</b> (whole note): hollow head, no stem. <b>4 beats</b>.</li></ul>
                <p>The <b>4/4</b> at the start is the time signature: 4 crotchet beats in every bar.</p>`,
         visual: { kind: 'score', ex: { rh: 'C4/q C4/q C4/h | C4/w' } } },
-      { type: 'play', title: 'Middle C rhythm',
-        intro: 'Use your right thumb. Count "1 2 3 4" out loud, steadily, and hold each note for its full value. For now the app only checks the notes, not the rhythm, so the counting is up to you.',
+      { type: 'text', title: 'Playing along',
+        body: `<p>Rhythm exercises use <b>Play along</b>. Press Start and you'll hear one bar of clicks (4 – 3 – 2 – 1) to count you in. Then keep playing with the clicks.</p>
+               <p>Each note is marked green if it's in time, or amber if it's a little early or late. It starts slow, and each time you pass, the speed goes up a notch until you reach the real tempo.</p>` },
+      { type: 'play', title: 'Middle C rhythm', mode: 'along',
+        intro: 'Right thumb on Middle C. Count "1 2 3 4" with the clicks, and hold each note for its full value.',
         ex: { rh: 'C4/q:1 C4/q C4/h | C4/h C4/h | C4/q C4/q C4/q C4/q | C4/w', bpm: 72 } },
     ],
   },
@@ -162,8 +174,8 @@ export const LESSONS = {
         body: `<p>A <b>rest</b> means silence for that many beats. Keep counting through it.</p>
                <p>The vertical lines are <b>bar lines</b>. Each bar holds exactly 4 beats in 4/4 time.</p>`,
         visual: { kind: 'score', ex: { rh: 'C4/q r/q C4/h | r/h C4/h' } } },
-      { type: 'play', title: 'Rests on the beat',
-        intro: 'Right thumb on Middle C. Count all four beats in every bar, including the rests.',
+      { type: 'play', title: 'Rests on the beat', mode: 'along',
+        intro: 'Right thumb on Middle C. Keep counting through the rests. The clicks don\'t stop, and neither should you.',
         ex: { rh: 'C4/q:1 r/q C4/q r/q | C4/h r/h | C4/q C4/q C4/q r/q | C4/w', bpm: 72 } },
     ],
   },
@@ -218,6 +230,134 @@ export const LESSONS = {
         intro: 'Finger 3 on E. Play it slowly. Aim for no stumbles rather than speed.',
         pass: 0.85,
         ex: { rh: 'E4/q:3 E4/q F4/q:4 G4/q:5 | G4/q F4/q E4/q D4/q:2 | C4/q:1 C4/q D4/q E4/q | E4/q. D4/8 D4/h | E4/q E4/q F4/q G4/q | G4/q F4/q E4/q D4/q | C4/q C4/q D4/q E4/q | D4/q. C4/8 C4/h', bpm: 84 } },
+    ],
+  },
+
+  'l4-5': {
+    title: 'Ode to Joy in time',
+    minutes: 8,
+    steps: [
+      { type: 'text', title: 'From right notes to right time',
+        body: `<p>You know the notes. Now play them <b>in time</b>.</p>
+               <p>Switch to <b>Play along</b>: one bar of clicks counts you in, then the music moves at a steady speed. It starts slow, and each time you pass it steps up towards the real tempo.</p>
+               <p>Stuck on a bar? Set <b>Bars</b> to just that bit, tick <b>Repeat</b>, and it'll loop until you've got it.</p>` },
+      { type: 'play', title: 'Ode to Joy: play along', mode: 'along',
+        intro: 'Keep going even if you slip. Steady time matters more than perfect notes.',
+        ex: { rh: 'E4/q:3 E4/q F4/q:4 G4/q:5 | G4/q F4/q E4/q D4/q:2 | C4/q:1 C4/q D4/q E4/q | E4/q. D4/8 D4/h | E4/q E4/q F4/q G4/q | G4/q F4/q E4/q D4/q | C4/q C4/q D4/q E4/q | D4/q. C4/8 C4/h', bpm: 92 } },
+    ],
+  },
+
+  // ================= Songs & Chords =================
+  'ls1-1': {
+    title: 'What is a chord?',
+    minutes: 6,
+    steps: [
+      { type: 'text', title: 'Three notes, skip-skip',
+        body: `<p>A <b>chord</b> is several notes played together. The basic chord, a <b>triad</b>, is three notes that each <b>skip</b> one white key: like C – E – G.</p>
+               <p>The bottom note names the chord. C – E – G is <b>C major</b>, the home chord of the key of C.</p>
+               <p>Right hand: thumb on C, finger 3 on E, finger 5 on G. Press them down together, like one big note.</p>`,
+        visual: { kind: 'keyboard', from: 55, to: 72, highlight: [60, 64, 67], labels: 'highlight' } },
+      { type: 'chord', chord: 'C', voicing: ['C4', 'E4', 'G4'], fingers: '1 3 5', count: 3 },
+      { type: 'text', title: 'Left hand too',
+        body: `<p>Same shape in the left hand, an octave lower: <b>finger 5 on C</b> (Bass C), 3 on E, 1 on G.</p>
+               <p>In songs, the left hand often plays the chord while the right hand plays the tune, or you sing it.</p>`,
+        visual: { kind: 'keyboard', from: 43, to: 60, highlight: [48, 52, 55], labels: 'highlight' } },
+      { type: 'chord', chord: 'C', voicing: ['C3', 'E3', 'G3'], fingers: '5 3 1', count: 3, hand: 'lh' },
+    ],
+  },
+  'ls1-2': {
+    title: 'F and G: the three-chord trick',
+    minutes: 7,
+    steps: [
+      { type: 'text', title: 'Same shape, new places',
+        body: `<p>Slide the skip-skip shape up so your thumb is on F and you get <b>F major</b> (F – A – C). Up again from G gives <b>G major</b> (G – B – D).</p>
+               <p><b>C, F and G</b> are the three main chords in the key of C. With just those three you can play hundreds of songs.</p>` },
+      { type: 'chord', chord: 'F', voicing: ['F4', 'A4', 'C5'], fingers: '1 3 5', count: 3 },
+      { type: 'chord', chord: 'G', voicing: ['G4', 'B4', 'D5'], fingers: '1 3 5', count: 3 },
+      { type: 'chords', title: 'Jumping between them', intro: 'Same shape each time. Just move your whole hand.',
+        seq: ['C', 'F', 'C', 'G', 'C'], voicings: { C: ['C4', 'E4', 'G4'], F: ['F4', 'A4', 'C5'], G: ['G4', 'B4', 'D5'] } },
+    ],
+  },
+  'ls1-3': {
+    title: 'Smooth changes',
+    minutes: 7,
+    steps: [
+      { type: 'text', title: 'The lazy way (the right way)',
+        body: `<p>Jumping your whole hand is slow. Pianists <b>rearrange the same notes</b> so the hand barely moves. These are called <b>inversions</b>.</p>
+               <p>Keep your thumb on Middle C:</p>
+               <ul><li><b>C</b> = C – E – G</li>
+               <li><b>F</b> = C – F – A (thumb stays, the other two fingers step up)</li>
+               <li><b>G</b> = B – D – G (thumb drops to B, the top finger stays on G)</li></ul>
+               <p>Same chords, a fraction of the movement.</p>`,
+        visual: { kind: 'keyboard', from: 55, to: 72, highlight: [60, 65, 69], labels: 'highlight' } },
+      { type: 'chords', title: 'C – F – C – G – C', intro: 'Keep your thumb near Middle C. Only move the fingers that need to.',
+        seq: ['C', 'F', 'C', 'G', 'C'], rounds: 2, tip: 'Watch "Next" so you know where you\'re going before you get there.' },
+    ],
+  },
+  'ls2-1': {
+    title: 'Twinkle, Twinkle',
+    minutes: 6,
+    steps: [
+      { type: 'text', title: 'Singing with chords',
+        body: `<p>Now for a real song. The chords sit above the words. Play the chord <b>as you sing the word under it</b>, and hold it until the next one.</p>
+               <p>The sheet waits for each chord change, so take your time. Singing out loud is the point: your voice carries the tune while your hand keeps the harmony.</p>` },
+      { type: 'song', title: 'Twinkle, Twinkle, Little Star',
+        lines: ['[C]Twinkle, twinkle, [F]little [C]star,', '[F]How I [C]wonder [G]what you [C]are.', '[C]Up a[F]bove the [C]world so [G]high,', '[C]Like a [F]diamond [C]in the [G]sky.', '[C]Twinkle, twinkle, [F]little [C]star,', '[F]How I [C]wonder [G]what you [C]are.'],
+        credit: 'Traditional (Jane Taylor, 1806)' },
+    ],
+  },
+  'ls2-2': {
+    title: 'When the Saints',
+    minutes: 7,
+    milestone: 'First song played and sung with chords',
+    steps: [
+      { type: 'song', title: 'When the Saints Go Marching In',
+        intro: 'The first chord comes on "saints". Sing "Oh when the" before you play it.',
+        lines: ['Oh when the [C]saints go marching in,', 'Oh when the saints go marching [G]in,', 'Oh Lord, I [C]want to be in that [F]number,', 'When the [C]saints go [G]marching [C]in.'],
+        credit: 'Traditional' },
+    ],
+  },
+  'ls2-3': {
+    title: 'Happy Birthday',
+    minutes: 6,
+    steps: [
+      { type: 'song', title: 'Happy Birthday',
+        intro: 'One you\'ll actually get asked to play. Starts on "birth".',
+        lines: ['Happy [C]birthday to [G]you,', 'Happy birthday to [C]you,', 'Happy [C]birthday, dear [F]someone,', 'Happy [C]birthday [G]to [C]you.'],
+        credit: 'Traditional (Mildred & Patty Hill)' },
+    ],
+  },
+  'ls3-1': {
+    title: 'A minor',
+    minutes: 6,
+    steps: [
+      { type: 'text', title: 'Major is bright, minor is moody',
+        body: `<p><b>A minor</b> (written <b>Am</b>) is A – C – E. Same skip-skip shape, but it sounds sadder.</p>
+               <p>Near Middle C, play it as <b>C – E – A</b>: from a C chord, just move your little finger from G up to A.</p>`,
+        visual: { kind: 'keyboard', from: 55, to: 72, highlight: [60, 64, 69], labels: 'highlight' } },
+      { type: 'chord', chord: 'Am', voicing: ['C4', 'E4', 'A4'], fingers: '1 3 5', count: 3 },
+      { type: 'chords', title: 'C to A minor and back', seq: ['C', 'Am', 'C', 'Am', 'F', 'G', 'C'] },
+    ],
+  },
+  'ls3-2': {
+    title: 'The four chords of pop',
+    minutes: 7,
+    milestone: 'The pop progression: C – G – Am – F',
+    steps: [
+      { type: 'text', title: 'I – V – vi – IV',
+        body: `<p><b>C – G – Am – F</b>, round and round. This order of four chords is behind a huge number of pop songs: <i>Let It Be</i>, <i>No Woman, No Cry</i>, <i>Someone Like You</i>, <i>With or Without You</i> and many more, often in a different key.</p>
+               <p>Musicians call it <b>I – V – vi – IV</b>, after the chords' positions in the key. Learn it well here and you'll hear it everywhere.</p>` },
+      { type: 'chords', title: 'C – G – Am – F', intro: 'Four times round. Aim for smooth, quick changes.', seq: ['C', 'G', 'Am', 'F'], rounds: 4 },
+    ],
+  },
+  'ls3-3': {
+    title: 'Amazing Grace',
+    minutes: 7,
+    steps: [
+      { type: 'song', title: 'Amazing Grace',
+        intro: 'A slow song in 3 (count "1 2 3"). Watch for the A minor near the end.',
+        lines: ['A[C]mazing grace, how [F]sweet the [C]sound,', 'That saved a wretch like [G]me.', 'I [C]once was lost, but [F]now am [C]found,', 'Was [Am]blind, but [G]now I [C]see.'],
+        credit: 'John Newton, 1779' },
     ],
   },
 
@@ -307,6 +447,9 @@ export const LESSONS = {
 };
 
 export const FOUNDATION_ORDER = TRACKS[0].units.flatMap(u => UNITS[u].lessons);
+export const trackLessons = trackId => TRACKS.find(t => t.id === trackId).units.flatMap(u => UNITS[u].lessons);
+export const ALL_LESSONS = TRACKS.flatMap(t => t.units.flatMap(u => UNITS[u].lessons));
+export const trackOf = lessonId => TRACKS.find(t => t.units.some(u => UNITS[u].lessons.includes(lessonId)));
 
 export function unitOf(lessonId) {
   return Object.entries(UNITS).find(([, u]) => u.lessons.includes(lessonId))?.[0];

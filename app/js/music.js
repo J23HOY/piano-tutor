@@ -63,3 +63,10 @@ export function exerciseEvents(ex) {
   }
   return [...byBeat.values()].sort((a, b) => a.beat - b.beat);
 }
+
+// Bars `from`..`to` (1-based, inclusive) of an exercise, for looping a passage.
+export function sliceExercise(ex, from, to) {
+  const cut = str => str && str.split('|').slice(from - 1, to).join('|');
+  return { ...ex, rh: cut(ex.rh), lh: cut(ex.lh) };
+}
+export const barCount = ex => Math.max(...[ex.rh, ex.lh].filter(Boolean).map(s => s.split('|').length));

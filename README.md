@@ -20,6 +20,22 @@ upwards, listens via mic (or USB MIDI), gives feedback and saves progress.
   Foundation track: 6 units, 17 lessons, up to Ode to Joy with both hands taking turns.
   Tested in desktop Chrome with simulated notes. **Not yet tested with the real mic and piano.**
 
+- 4 Oct 2026: v0.1.1 fits practice screens above the on-screen keys (Jonny's feedback).
+
+- 4 Oct 2026: **v0.2.0**, from Jonny's requests:
+  - Key hints: "Play any B" shows a big badge and blue dots on every B on the bottom keys.
+    After a wrong note it says "You played D. Play F instead: a skip higher" and marks F.
+    Keys turn **blue** (not green) when correct. Optional "Show keys" in wait mode.
+  - **Rhythm**: Play along mode (1-bar count-in, metronome, notes + timing scored, rushing/
+    dragging feedback), **tempo ladder** (starts at 70% of goal, +~10% per pass), **loop bars**
+    with Repeat, "Loop bar N" from the results. Settings > Timing calibration (tap along).
+  - **Songs & Chords track** (opens after l4-1): 3 units, 9 lessons. C/F/G/Am chords, smooth
+    inversions, chord progressions with Now/Next, song sheets (chords over lyrics) for
+    Twinkle, When the Saints, Happy Birthday, Amazing Grace, and the I–V–vi–IV pop progression.
+  - Chord recognition from the mic: chroma (energy per note letter) from an 8192-pt FFT, then
+    best-fitting triad. `tests/chroma.html` checks it on synthesised chords (all correct,
+    including C vs Am). Not yet tried on the real piano.
+
 ## Links
 - Repo: https://github.com/J23HOY/piano-tutor
 - **App (tablet):** https://j23hoy.github.io/piano-tutor/app/
@@ -32,13 +48,15 @@ upwards, listens via mic (or USB MIDI), gives feedback and saves progress.
 - Progress is in localStorage on the device, with JSON backup/restore in Settings.
 - Dev: `python -m http.server 8765 --bind 127.0.0.1` from the repo root, then
   `tests/shot.sh "preset=midway&to=/today" name` takes screenshots with seeded progress.
-  Add `&sim=60,62,64` to play notes into the app. Presets: `new`, `fresh`, `placed`, `midway`.
+  Add `&sim=60,62,64` to play notes into the app (`60+64+67` = chord, `r` = skip a step,
+  `&simgap=ms`, `&simdelay=ms`, `&autostart=1` starts Play along). Presets: `new`, `fresh`, `placed`, `midway`.
+  `tests/chroma.html` (headless `--dump-dom`) prints the chord-recognition results.
   On a desk computer, the keys A W S E D F T G Y H U J K play C4–C5 (Z/X shift octave).
 
 ## Next steps
-1. Jonny tries the app on the tablet at the piano: placement check, a lesson, Reading Gym.
-   Report how reliable mic detection is (wrong notes, missed notes, repeated notes, delay).
-2. Tune detection based on that (sensitivity defaults, octave handling, maybe a better
-   pitch algorithm or Basic Pitch for chords).
-3. Phase 2: metronome, play-along with rhythm scoring, tempo ladder, loop bars.
-4. Open the Songs & Chords track (C, F, G chords → I–V–vi–IV → lead sheets).
+1. Jonny tries it at the piano: mic note detection, chord recognition, Play along timing
+   (run Settings > Timing calibration first). Report what's unreliable.
+2. Tune from that: thresholds, chord-matching strictness, default mic delay.
+3. Songs: steady-beat mode for songs (one chord per bar with the metronome), LH bass + RH chord,
+   importing his own songs (chord sheets typed in, stored on the tablet only).
+4. Reading & Classical track: Minuet in G and onwards, key signatures, G position.

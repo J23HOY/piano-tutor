@@ -1,12 +1,10 @@
 import { store } from './store.js';
 import { input } from './input.js';
-import { playNote } from './audio.js';
-import { createKeyboard } from './keyboard.js';
+import { dock } from './dock.js';
 import { renderWelcome, renderToday, renderPath, renderLesson, renderGym, renderProgress, renderSettings } from './screens.js';
 
 const root = document.getElementById('view');
 const chip = document.getElementById('listen');
-const dock = document.getElementById('dock');
 let cleanup = null;
 
 // ---------------- theme
@@ -42,7 +40,8 @@ function route() {
   // their music to the space that's actually left.
   const practising = /^\/(lesson|gym)/.test(path) || params.get('step') === 'placement';
   document.body.classList.toggle('practising', practising);
-  updateDock(practising);
+  dock.clear();
+  dock.show(practising);
   window.scrollTo({ top: 0 });
   cleanup = fn(root, params, ...args) || null;
   document.querySelectorAll('nav.tabs a').forEach(a => a.classList.toggle('on', path.startsWith(a.dataset.r)));
@@ -58,8 +57,7 @@ function fitToScreen() {
     if (!page) return;
     page.style.zoom = '';
     if (!document.body.classList.contains('practising')) return;
-    const dockH = dock.hidden ? 0 : dock.offsetHeight;
-    const avail = window.innerHeight - page.getBoundingClientRect().top - dockH - 12;
+    const avail = window.innerHeight - page.getBoundingClientRect().top - dock.height - 12;
     const need = page.scrollHeight;
     const z = need > avail ? Math.max(0.7, avail / need).toFixed(3) : '';
     page.style.zoom = z;
@@ -87,24 +85,6 @@ window.addEventListener('pointerdown', () => {
   if (store.get().settings.autoListen && input.status.mic === 'off' && store.get().onboarded) input.startMic();
 }, { capture: true });
 
-// ---------------- on-screen keys (bottom dock)
-let dockKb = null;
-function updateDock(practising) {
-  const show = practising && store.get().settings.touchKeyboard;
-  dock.hidden = !show;
-  document.body.classList.toggle('with-dock', show);
-  if (show && !dockKb) {
-    dockKb = createKeyboard({ from: 48, to: 76, labels: 'none', onPress: m => { playNote(m, 0.6); input.emit(m, 'touch', 80); } });
-    dock.querySelector('.dock-keys').appendChild(dockKb.el);
-  }
-}
-dock.querySelector('[data-hide]').onclick = () => {
-  store.update(s => { s.settings.touchKeyboard = false; });
-  updateDock(false);
-};
-// Light up dock keys for any input, so you can see what the app heard.
-input.on(e => dockKb?.flash(e.midi));
-
 // ---------------- keep the screen on while practising
 let wakeLock = null;
 async function keepAwake() {
@@ -123,8 +103,15 @@ route();
 // Dev/test hook: ?sim=64,64,65 plays those notes into the app after load.
 const sim = new URLSearchParams(location.search).get('sim');
 if (sim) {
-  const notes = sim.split(',').map(Number);
+  // each comma-separated step is one note, a chord (60+64+67) or 'r' (nothing), `simgap` ms apart
+  const steps = sim.split(',');
+  const gap = Number(new URLSearchParams(location.search).get('simgap')) || 150;
   let i = 0;
-  const tick = () => { if (i < notes.length) { input.emit(notes[i++], 'keys'); setTimeout(tick, 150); } };
-  setTimeout(tick, 1000);
+  const tick = () => {
+    if (i >= steps.length) return;
+    const st = steps[i++];
+    if (st !== 'r') st.split(/[+ ]/).map(Number).forEach((m, k) => setTimeout(() => input.emit(m, 'keys'), k * 30));
+    setTimeout(tick, gap);
+  };
+  setTimeout(tick, Number(new URLSearchParams(location.search).get('simdelay')) || 1000);
 }

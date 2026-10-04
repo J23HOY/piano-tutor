@@ -16,6 +16,7 @@ function ac() {
 }
 
 export function playNote(midi, seconds = 0.8, when = 0) {
+  if (!Number.isFinite(midi)) return;
   const c = ac();
   const t = c.currentTime + when;
   const f = 440 * Math.pow(2, (midi - 69) / 12);
@@ -57,4 +58,46 @@ export function playEvents(events, bpm, onStep) {
   const end = last ? (last.beat + (last.beats || 1)) * spb : 0;
   timers.push(setTimeout(() => onStep?.(-1), end * 1000));
   return () => timers.forEach(clearTimeout);
+}
+
+// ---------------- Metronome clock ----------------
+// Schedules clicks on the audio clock and reports beats. Beat 0 is the first beat AFTER the
+// count-in; count-in beats are negative. timeOf(beat) gives that beat's performance.now() time.
+// opts: { bpm, beatsPerBar, countInBars, click: bool, onBeat(beat) }
+export function startClock({ bpm, beatsPerBar = 4, countInBars = 1, click = true, onBeat }) {
+  const c = ac();
+  const spb = 60 / bpm;
+  const firstBeat = -countInBars * beatsPerBar;
+  const perf0 = performance.now() + 150;     // time of the first count-in beat
+  const timeOf = beat => perf0 + (beat - firstBeat) * spb * 1000;
+  let next = firstBeat, stopped = false;
+  const timers = [];
+  // Look ~120 ms ahead: schedule each click on the audio clock and a callback for the beat.
+  const schedule = () => {
+    if (stopped) return;
+    const now = performance.now();
+    while (timeOf(next) < now + 120) {
+      const b = next, wait = Math.max(0, timeOf(b) - now);
+      const accent = ((b % beatsPerBar) + beatsPerBar) % beatsPerBar === 0;
+      if (click || b < 0) tick(c.currentTime + wait / 1000, accent, b < 0, wait);
+      timers.push(setTimeout(() => { if (!stopped) onBeat?.(b); }, wait));
+      next++;
+    }
+  };
+  const loop = setInterval(schedule, 25);
+  schedule();
+  return { spb, timeOf, stop() { stopped = true; clearInterval(loop); timers.forEach(clearTimeout); } };
+}
+
+function tick(at, accent, countIn, waitMs) {
+  const c = ac();
+  const o = c.createOscillator(), g = c.createGain();
+  o.frequency.value = accent ? 1760 : 1320;
+  g.gain.setValueAtTime(0, at);
+  g.gain.linearRampToValueAtTime(countIn ? 0.5 : 0.35, at + 0.002);
+  g.gain.exponentialRampToValueAtTime(0.001, at + 0.05);
+  o.connect(g).connect(master);
+  o.start(at); o.stop(at + 0.06);
+  // keep the mic from hearing the click as a note
+  setTimeout(() => input.muteMic(70), Math.max(0, waitMs - 5));
 }
