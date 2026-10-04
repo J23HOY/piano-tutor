@@ -9,9 +9,9 @@ upwards, listens via mic (or USB MIDI), gives feedback and saves progress.
   Waiting on Jonny's answers to the clarifying questions before Phase 0
   (the mic/MIDI detection test on the real tablet and piano).
 
-- 4 Oct 2026: Answers in (see PLAN.md Â§3 and Â§8). The piano is an older Celviano
+- 4 Oct 2026: Answers in (see PLAN.md §3 and §8). The piano is an older Celviano
   with no USB. Phase 0 test page built at [spike/index.html](spike/index.html)
-  (MIDI + audio pitch detection, keyboard, landmark-note drill), not yet deployed.
+  (MIDI + audio pitch detection, keyboard, landmark-note drill). Mic chosen as the main input. Deployed to GitHub Pages.
 
 ## Links
 - Repo: https://github.com/J23HOY/piano-tutor
