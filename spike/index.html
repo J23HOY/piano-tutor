@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Piano Tutor — Input Test</title>
+<style>
+  :root {
+    --paper: #fbf8f2; --ink: #1d1d1f; --muted: #6b6b70; --line: #d9d4ca;
+    --accent: #2f5d8a; --good: #2e7d4f; --bad: #b3412f; --card: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font: 17px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 20px clamp(16px, 3vw, 40px) 40px;
+  }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; font-weight: 650; }
+  h2 { font-size: 1.05rem; margin: 0 0 10px; font-weight: 650; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+  .wide { grid-column: 1 / -1; }
+  button {
+    font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 12px 18px;
+    background: var(--accent); color: #fff; cursor: pointer; min-height: 48px;
+  }
+  button.secondary { background: #e8e3d9; color: var(--ink); }
+  button:disabled { opacity: .5; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: .9rem; background: #eee9df; }
+  .pill.ok { background: #dcefe3; color: var(--good); }
+  .pill.no { background: #f6dfda; color: var(--bad); }
+  .big { font-size: 2.6rem; font-weight: 700; letter-spacing: -.02em; }
+  .muted { color: var(--muted); }
+  #kbdWrap { overflow-x: auto; }
+  #log { font: 13px/1.4 ui-monospace, Consolas, monospace; height: 140px; overflow: auto; background: #f4f1ea; border-radius: 8px; padding: 8px; white-space: pre; }
+  .staffBox { display: flex; justify-content: center; }
+  .feedback { font-size: 1.4rem; font-weight: 650; min-height: 2em; text-align: center; }
+  .feedback.good { color: var(--good); } .feedback.bad { color: var(--bad); }
+</style>
+</head>
+<body>
+  <h1>Piano Tutor: input test</h1>
+  <p class="sub">Phase 0. Checks that the tablet can hear the piano (USB MIDI, with the mic as a backup) before we build the real app.</p>
+
+  <div class="grid">
+    <section class="card">
+      <h2>1 · Piano connection (USB MIDI)</h2>
+      <p id="midiStatus"><span class="pill">checking…</span></p>
+      <div class="row"><button id="midiBtn">Connect piano</button></div>
+      <p class="muted" id="midiDevices"></p>
+    </section>
+
+    <section class="card">
+      <h2>2 · Last note played</h2>
+      <div class="big" id="lastNote">—</div>
+      <p class="muted" id="lastDetail">Play any key. Try a chord too: all the keys you hold should light up below.</p>
+    </section>
+
+    <section class="card">
+      <h2>3 · Microphone (main input)</h2>
+      <p class="muted">Pitch detection for one note at a time. It uses whatever audio input Android is set to: the built-in mic, or a USB audio adapter wired from the piano's line/phones out.</p>
+      <div class="row"><button id="micBtn" class="secondary">Start mic</button> <span class="big" id="micNote" style="font-size:1.8rem">—</span></div>
+      <p class="muted" id="micDetail"></p>
+    </section>
+
+    <section class="card">
+      <h2>4 · Keep screen on</h2>
+      <p class="muted">Stops the tablet sleeping while you practise.</p>
+      <div class="row"><button id="wakeBtn" class="secondary">Keep awake</button> <span id="wakeStatus" class="pill">off</span></div>
+    </section>
+
+    <section class="card wide">
+      <div id="kbdWrap"><svg id="kbd"></svg></div>
+    </section>
+
+    <section class="card wide">
+      <h2>5 · Mini reading drill: landmark notes</h2>
+      <p class="muted">A note appears on the staff. Play it. Ten rounds. This is a rough version of the core loop the real app is built around.</p>
+      <div class="staffBox"><svg id="staff" width="360" height="300" viewBox="0 0 360 300"></svg></div>
+      <div class="feedback" id="drillFeedback"></div>
+      <div class="row" style="justify-content:center"><button id="drillBtn">Start drill</button></div>
+    </section>
+
+    <section class="card wide">
+      <h2>Raw MIDI log</h2>
+      <div id="log"></div>
+    </section>
+  </div>
+
+<script>
+// ---------- note helpers ----------
+const NAMES = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+const LETTER_STEP = [0,0,1,1,2,3,3,4,4,5,5,6]; // diatonic step for each pitch class (sharps sit on the letter below)
+const isBlack = m => [1,3,6,8,10].includes(m % 12);
+const noteName = m => NAMES[m % 12] + (Math.floor(m / 12) - 1);
+const logEl = document.getElementById('log');
+function log(msg) { logEl.textContent += msg + '\n'; logEl.scrollTop = logEl.scrollHeight; }
+
+// ---------- shared note-event bus (MIDI and mic both feed this) ----------
+const held = new Set();
+const listeners = [];
+function noteOn(midi, velocity, source) {
+  held.add(midi); drawKeyboard();
+  document.getElementById('lastNote').textContent = noteName(midi);
+  document.getElementById('lastDetail').textContent =
+    `${source} · MIDI ${midi}` + (velocity != null ? ` · velocity ${velocity}/127` : '') +
+    (held.size > 1 ? ` · holding ${held.size} keys: ${[...held].sort((a,b)=>a-b).map(noteName).join(' ')}` : '');
+  listeners.forEach(fn => fn(midi, source));
+}
+function noteOff(midi) { held.delete(midi); drawKeyboard(); }
+
+// ---------- 1. Web MIDI ----------
+const midiStatus = document.getElementById('midiStatus');
+const setPill = (el, text, cls) => el.innerHTML = `<span class="pill ${cls||''}">${text}</span>`;
+if (!navigator.requestMIDIAccess) {
+  setPill(midiStatus, 'Web MIDI not supported in this browser (use Chrome)', 'no');
+  document.getElementById('midiBtn').disabled = true;
+} else {
+  setPill(midiStatus, 'Supported. Plug in the piano, then tap Connect', '');
+}
+document.getElementById('midiBtn').onclick = async () => {
+  try {
+    const access = await navigator.requestMIDIAccess();
+    const refresh = () => {
+      const inputs = [...access.inputs.values()];
+      inputs.forEach(inp => inp.onmidimessage = onMidi);
+      document.getElementById('midiDevices').textContent =
+        inputs.length ? 'Inputs: ' + inputs.map(i => `${i.name} (${i.manufacturer || '?'})`).join(', ') : 'No MIDI inputs found yet. Check the cable and that the piano is on.';
+      setPill(midiStatus, inputs.length ? 'Connected' : 'Access granted, no piano found', inputs.length ? 'ok' : 'no');
+    };
+    access.onstatechange = e => { log(`state: ${e.port.name} ${e.port.state}`); refresh(); };
+    refresh();
+  } catch (err) {
+    setPill(midiStatus, 'MIDI access refused: ' + err.message, 'no');
+  }
+};
+function onMidi(e) {
+  const [status, d1, d2] = e.data;
+  const type = status & 0xf0;
+  if (type === 0x90 && d2 > 0) { log(`on   ${noteName(d1).padEnd(4)} vel ${d2}`); noteOn(d1, d2, 'MIDI'); }
+  else if (type === 0x80 || (type === 0x90 && d2 === 0)) { log(`off  ${noteName(d1)}`); noteOff(d1); }
+  else if (type === 0xb0 && d1 === 64) log(`sustain pedal ${d2 >= 64 ? 'down' : 'up'}`);
+  else if (status !== 0xfe && status !== 0xf8) log(`msg  ${[...e.data].map(b => b.toString(16).padStart(2,'0')).join(' ')}`);
+}
+
+// ---------- 3. Microphone (autocorrelation pitch detection) ----------
+let micRunning = false;
+document.getElementById('micBtn').onclick = async () => {
+  if (micRunning) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    const ctx = new AudioContext();
+    const src = ctx.createMediaStreamSource(stream);
+    const an = ctx.createAnalyser(); an.fftSize = 2048; src.connect(an);
+    const buf = new Float32Array(an.fftSize);
+    micRunning = true; document.getElementById('micBtn').textContent = 'Listening…';
+    // A note counts once its pitch holds for 2 readings. The same note can count again
+    // after a fresh attack (a sudden jump in loudness), so repeated notes register while
+    // the piano is still ringing.
+    let lastMidi = null, stable = 0, emitted = null, prevRms = 0, armed = true;
+    setInterval(() => {
+      an.getFloatTimeDomainData(buf);
+      let sum = 0; for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+      const rms = Math.sqrt(sum / buf.length);
+      if (rms > 0.01 && rms > prevRms * 1.6) armed = true; // new attack
+      prevRms = rms;
+      const f = autoCorrelate(buf, ctx.sampleRate);
+      if (f > 0) {
+        const m = Math.round(69 + 12 * Math.log2(f / 440));
+        stable = (m === lastMidi) ? stable + 1 : 0; lastMidi = m;
+        document.getElementById('micNote').textContent = noteName(m);
+        document.getElementById('micDetail').textContent = `${f.toFixed(1)} Hz · level ${(rms * 100).toFixed(0)}`;
+        if (stable >= 1 && (emitted !== m || armed)) {
+          emitted = m; armed = false; noteOn(m, null, 'Mic'); setTimeout(() => noteOff(m), 300);
+        }
+      } else { stable = 0; lastMidi = null; emitted = null; }
+    }, 40);
+  } catch (err) { document.getElementById('micDetail').textContent = 'Mic refused: ' + err.message; }
+};
+function autoCorrelate(buf, rate) { // ACF2+ style
+  let size = buf.length, rms = 0;
+  for (let i = 0; i < size; i++) rms += buf[i] * buf[i];
+  if (Math.sqrt(rms / size) < 0.01) return -1;
+  let r1 = 0, r2 = size - 1; const thr = 0.2;
+  for (let i = 0; i < size / 2; i++) if (Math.abs(buf[i]) < thr) { r1 = i; break; }
+  for (let i = 1; i < size / 2; i++) if (Math.abs(buf[size - i]) < thr) { r2 = size - i; break; }
+  buf = buf.slice(r1, r2); size = buf.length;
+  const c = new Float32Array(size);
+  for (let i = 0; i < size; i++) for (let j = 0; j < size - i; j++) c[i] += buf[j] * buf[j + i];
+  let d = 0; while (d < size - 1 && c[d] > c[d + 1]) d++;
+  let maxv = -1, maxp = -1;
+  for (let i = d; i < size; i++) if (c[i] > maxv) { maxv = c[i]; maxp = i; }
+  if (maxp <= 0 || maxp >= size - 1) return -1;
+  const x1 = c[maxp - 1], x2 = c[maxp], x3 = c[maxp + 1];
+  const a = (x1 + x3 - 2 * x2) / 2, b = (x3 - x1) / 2;
+  return rate / (a ? maxp - b / (2 * a) : maxp);
+}
+
+// ---------- 4. Wake lock ----------
+let wakeLock = null;
+document.getElementById('wakeBtn').onclick = async () => {
+  const st = document.getElementById('wakeStatus');
+  if (!('wakeLock' in navigator)) { st.textContent = 'not supported'; st.className = 'pill no'; return; }
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    st.textContent = 'on'; st.className = 'pill ok';
+    wakeLock.addEventListener('release', () => { st.textContent = 'off'; st.className = 'pill'; });
+  } catch (err) { st.textContent = err.message; st.className = 'pill no'; }
+};
+
+// ---------- keyboard (88 keys, A0–C8) ----------
+function drawKeyboard() {
+  const svg = document.getElementById('kbd');
+  const W = 22, H = 110, BW = 14, BH = 68;
+  const whites = []; for (let m = 21; m <= 108; m++) if (!isBlack(m)) whites.push(m);
+  svg.setAttribute('width', whites.length * W); svg.setAttribute('height', H + 2);
+  let s = '';
+  whites.forEach((m, i) => {
+    const on = held.has(m);
+    s += `<rect x="${i*W}" y="1" width="${W-1}" height="${H}" rx="3" fill="${on ? '#9cc3e6' : '#fff'}" stroke="#bbb"/>`;
+    if (m === 60) s += `<circle cx="${i*W + W/2 - .5}" cy="${H - 10}" r="3" fill="#2f5d8a"/>`; // middle C marker
+  });
+  whites.forEach((m, i) => {
+    const b = m + 1;
+    if (b <= 108 && isBlack(b)) s += `<rect x="${(i+1)*W - BW/2 - .5}" y="1" width="${BW}" height="${BH}" rx="2" fill="${held.has(b) ? '#2f5d8a' : '#222'}"/>`;
+  });
+  svg.innerHTML = s;
+}
+drawKeyboard();
+// centre on middle C
+document.getElementById('kbdWrap').scrollLeft = 23 * 22 - document.getElementById('kbdWrap').clientWidth / 2;
+
+// ---------- grand staff ----------
+const SP = 14;                        // gap between staff lines
+const TREBLE_BOTTOM = 120, BASS_BOTTOM = 238; // y of the bottom line of each staff
+const dia = m => (Math.floor(m / 12) - 1) * 7 + LETTER_STEP[m % 12]; // diatonic index: C4 = 28
+function drawStaff(midi, colour) {
+  const svg = document.getElementById('staff');
+  let s = '';
+  for (let i = 0; i < 5; i++) {
+    s += `<line x1="20" x2="340" y1="${TREBLE_BOTTOM - i*SP}" y2="${TREBLE_BOTTOM - i*SP}" stroke="#333" stroke-width="1.3"/>`;
+    s += `<line x1="20" x2="340" y1="${BASS_BOTTOM - i*SP}" y2="${BASS_BOTTOM - i*SP}" stroke="#333" stroke-width="1.3"/>`;
+  }
+  s += `<line x1="20" x2="20" y1="${TREBLE_BOTTOM - 4*SP}" y2="${BASS_BOTTOM}" stroke="#333" stroke-width="2"/>`;
+  s += `<text x="26" y="${TREBLE_BOTTOM + 8}" font-size="${SP*5.6}" font-family="serif">𝄞</text>`;
+  s += `<text x="28" y="${BASS_BOTTOM - 2*SP + 4}" font-size="${SP*3.4}" font-family="serif">𝄢</text>`;
+  if (midi != null) {
+    const d = dia(midi), x = 200;
+    const treble = d >= 28;
+    const base = treble ? TREBLE_BOTTOM : BASS_BOTTOM, ref = treble ? 30 : 18; // E4 / G2 on bottom lines
+    const y = base - (d - ref) * SP / 2;
+    const ledger = ly => s += `<line x1="${x-17}" x2="${x+17}" y1="${ly}" y2="${ly}" stroke="#333" stroke-width="1.3"/>`;
+    if (treble) { for (let k = 28; k >= d && k < 30; k -= 2) ledger(base - (k - ref) * SP/2);
+                  for (let k = 40; k <= d; k += 2) ledger(base - (k - ref) * SP/2); }
+    else        { for (let k = 28; k <= d && k > 26; k += 2) ledger(base - (k - ref) * SP/2);
+                  for (let k = 16; k >= d; k -= 2) ledger(base - (k - ref) * SP/2); }
+    if (isBlack(midi)) s += `<text x="${x-30}" y="${y+7}" font-size="22" font-family="serif" fill="${colour}">♯</text>`;
+    s += `<ellipse cx="${x}" cy="${y}" rx="${SP*0.68}" ry="${SP*0.48}" transform="rotate(-20 ${x} ${y})" fill="${colour}"/>`;
+  }
+  svg.innerHTML = s;
+}
+drawStaff(null);
+
+// ---------- 5. drill ----------
+const LANDMARKS = [48, 53, 60, 67, 72, 55, 64, 57, 62]; // Bass C, Bass F, Middle C, Treble G, Treble C, + neighbours
+let drill = null;
+document.getElementById('drillBtn').onclick = () => {
+  drill = { round: 0, correct: 0, times: [] };
+  document.getElementById('drillBtn').textContent = 'Restart';
+  nextRound();
+};
+function nextRound() {
+  if (drill.round >= 10) {
+    const avg = drill.times.length ? (drill.times.reduce((a,b)=>a+b,0) / drill.times.length / 1000).toFixed(1) : '–';
+    setFb(`Done: ${drill.correct}/10 right first time · average ${avg}s per note`, 'good');
+    drawStaff(null); drill = null; return;
+  }
+  let t; do { t = LANDMARKS[Math.floor(Math.random() * LANDMARKS.length)]; } while (drill.target === t);
+  drill.target = t; drill.round++; drill.start = performance.now(); drill.missed = false;
+  drawStaff(t, '#1d1d1f'); setFb(`Round ${drill.round} of 10`, '');
+}
+function setFb(text, cls) { const el = document.getElementById('drillFeedback'); el.textContent = text; el.className = 'feedback ' + cls; }
+listeners.push(midi => {
+  if (!drill || drill.waiting) return;
+  if (midi === drill.target) {
+    const ms = performance.now() - drill.start;
+    if (!drill.missed) { drill.correct++; drill.times.push(ms); }
+    drawStaff(midi, '#2e7d4f'); setFb(`✓ ${noteName(midi)} · ${(ms/1000).toFixed(1)}s`, 'good');
+    drill.waiting = true; setTimeout(() => { drill.waiting = false; nextRound(); }, 900);
+  } else {
+    drill.missed = true;
+    const dir = midi > drill.target ? 'too high' : 'too low';
+    setFb(`✗ You played ${noteName(midi)}: ${dir}, try again`, 'bad');
+  }
+});
+</script>
+</body>
+</html>
