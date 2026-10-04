@@ -47,6 +47,15 @@ upwards, listens via mic (or USB MIDI), gives feedback and saves progress.
   on by default, can be turned off), and a readout beside the keys shows "Play E4 / Heard D4"
   (blue when it matches, red when it doesn't).
 
+- 4 Oct 2026: v0.2.3. Jonny: "G is showing as C". Cause: the previous note (C) was still
+  ringing; C+G together repeat at C's rate, so pitch detectors report C (or C an octave down).
+  Reproduced in tests. New note detection: spot each strike (loudness jump OR new spectral
+  energy) and identify the note from the NEW energy only ("spectral flux" + harmonic sum on
+  the 8192-pt spectrum), with an octave check for dull/weak-fundamental sounds. YIN replaces
+  plain autocorrelation as the fallback. Real-time test (tests/live.html, Ode to Joy + C→G
+  with notes left ringing): ~99% (old detector failed the C→G cases); weak-fundamental sound
+  ~85%, mostly octave slips (forgiven when matching).
+
 ## Links
 - Repo: https://github.com/J23HOY/piano-tutor
 - **App (tablet):** https://j23hoy.github.io/piano-tutor/app/
@@ -62,6 +71,10 @@ upwards, listens via mic (or USB MIDI), gives feedback and saves progress.
   Add `&sim=60,62,64` to play notes into the app (`60+64+67` = chord, `r` = skip a step,
   `&simgap=ms`, `&simdelay=ms`, `&autostart=1` starts Play along, `&simsrc=mic` pretends the notes came from the mic). Presets: `new`, `fresh`, `placed`, `midway`.
   `tests/chroma.html` (headless `--dump-dom`) prints the chord-recognition results.
+  `tests/pitch.html` compares pitch detectors on synthetic notes (incl. a ringing previous note).
+  `tests/live.html` plays a melody through the real-time mic pipeline; it needs
+  `python tests/slow_server.py` running (keeps headless Chrome open), then
+  `chrome --headless=new --autoplay-policy=no-user-gesture-required --dump-dom http://127.0.0.1:8765/tests/live.html[?gap=0.45&profile=weak]`.
   On a desk computer, the keys A W S E D F T G Y H U J K play C4–C5 (Z/X shift octave).
 
 ## Next steps

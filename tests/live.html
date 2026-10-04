@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Live detection test</title>
+<pre id="out">running…</pre>
+<!-- keeps the page "loading" for ~16 s so headless Chrome waits (needs tests/slow_server.py) -->
+<img src="http://127.0.0.1:8766/sleep?ms=16000" alt="" width="1" height="1">
+<script type="module">
+// Plays a melody of piano-like synthesised notes (long decays, so earlier notes are still
+// ringing) through the SAME real-time analysis the mic uses, and lists what was detected.
+// Run: start tests/slow_server.py, then
+//   chrome --headless=new --autoplay-policy=no-user-gesture-required --dump-dom http://127.0.0.1:8765/tests/live.html
+import { attachAnalysis, input } from '../app/js/input.js';
+import { store } from '../app/js/store.js';
+const NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const name = m => NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
+store.update(s => { s.settings.micThreshold = 0.006; });
+const ctx = new AudioContext();
+const bus = ctx.createGain();
+const sink = ctx.createGain(); sink.gain.value = 0;
+bus.connect(sink).connect(ctx.destination);
+attachAnalysis(ctx, bus, { emitSource: 'test' });
+const heard = [];
+const t0 = performance.now();
+input.on(e => heard.push([Math.round(e.raw - t0), e.midi]));
+const dbg = [];
+input.debug = d => dbg.push(`${Math.round(performance.now() - t0)}: chose ${d.chosen == null ? '-' : name(d.chosen)} | yin ${d.yin > 0 ? name(Math.round(69 + 12 * Math.log2(d.yin / 440))) : '-'} | flux ${d.cands.map(c => `${name(c.midi)}(conf ${c.conf.toFixed(2)}, score ${c.score.toFixed(2)})`).join(', ')}`);
+const Q = new URLSearchParams(location.search);
+const PROFILE = Q.get('profile') === 'weak' ? [.25, .8, .6, .35, .2, .1, .06] : [1, .5, .3, .2, .12, .08, .05];
+function strike(m, at, lvl = 1) {
+  const f = 440 * 2 ** ((m - 69) / 12);
+  PROFILE.forEach((a, i) => {
+    const k = i + 1, o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = f * k * Math.sqrt(1 + 0.0004 * k * k);
+    g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(lvl * a * 0.25, at + 0.005);
+    g.gain.setTargetAtTime(0, at + 0.005, 1.6 / k);       // long, sustained ring
+    o.connect(g).connect(bus); o.start(at); o.stop(at + 6);
+  });
+}
+// Ode to Joy opening, plus C then G (the reported case), at ~100 bpm
+const melody = [64, 64, 65, 67, 67, 65, 64, 62, 60, 60, 62, 64, 64, 62, 62, 60, 67, 60, 67, 48, 55];
+const start = ctx.currentTime + 0.3, gap = Number(Q.get('gap')) || 0.6;
+melody.forEach((m, i) => strike(m, start + i * gap));
+setTimeout(() => {
+  const got = heard.map(h => h[1]);
+  // align: each expected note should appear once, in order
+  let j = 0, ok = 0; const extras = [], misses = [];
+  for (const m of melody) {
+    const k = got.indexOf(m, j);
+    if (k >= 0 && k - j <= 1) { if (k > j) extras.push(name(got[j])); ok++; j = k + 1; } else misses.push(name(m));
+  }
+  for (; j < got.length; j++) extras.push(name(got[j]));
+  document.getElementById('out').textContent =
+    `audio state: ${ctx.state}\nexpected ${melody.length}, detected ${got.length}, matched in order ${ok}\n` +
+    `missed: ${misses.join(' ') || 'none'}\nextra/wrong: ${extras.join(' ') || 'none'}\n` +
+    `heard: ${heard.map(h => `${name(h[1])}@${h[0]}`).join(' ')}\n` + dbg.join('\n');
+}, (0.3 + melody.length * gap + 1) * 1000);
+</script>
