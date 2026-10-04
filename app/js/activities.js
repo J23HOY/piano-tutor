@@ -10,6 +10,7 @@ import { createKeyboard } from './keyboard.js';
 import { dock } from './dock.js';
 import { exerciseEvents, noteName, pcOf, letterOf, midiOf, LETTERS, octaveOf, sliceExercise, barCount } from './music.js';
 import { pick, record } from './srs.js';
+import { goalText, WAIT_PASS, WAIT_RUNS, ALONG_NOTES, ALONG_TIME, ALONG_SPEED, GYM_PASS } from './goals.js';
 
 export const h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
 const LETTER_NAMES = { 0: 'C', 2: 'D', 4: 'E', 5: 'F', 7: 'G', 9: 'A', 11: 'B' };
@@ -195,7 +196,7 @@ export function runGym(el, opts, onDone) {
     const right = results.filter(r => r.firstTry).length;
     const avg = results.reduce((a, r) => a + r.ms, 0) / Math.max(1, results.length);
     const slow = [...results].sort((a, b) => b.ms - a.ms).slice(0, 3).filter(r => r.ms > 2500 || !r.firstTry).map(r => r.name);
-    const summary = { right, total: results.length, avgMs: Math.round(avg), slow: [...new Set(slow)] };
+    const summary = { right, total: results.length, avgMs: Math.round(avg), slow: [...new Set(slow)], mastered: right / Math.max(1, results.length) >= GYM_PASS };
     store.log('gym', opts.id || 'gym', opts.title || 'Reading Gym', `${right}/${results.length}, avg ${(avg / 1000).toFixed(1)}s`);
     onDone(summary);
   }
@@ -241,7 +242,7 @@ export function runPlay(el, step, onDone, ctx = {}) {
   el.innerHTML = '';
   const card = h(`<div class="activity play">
       <div class="play-head">
-        <div class="ph-text"><h2>${step.title}</h2><p class="intro">${step.intro || ''}</p></div>
+        <div class="ph-text"><h2>${step.title}</h2><p class="intro">${step.intro || ''}</p><p class="goal" data-goal></p></div>
         <div class="seg mode-seg"><button data-mode="wait">Wait mode</button><button data-mode="along">Play along</button></div>
       </div>
       <div class="tools">
@@ -284,7 +285,21 @@ export function runPlay(el, step, onDone, ctx = {}) {
     countIn.hidden = true;
     beatsEl.querySelectorAll('i').forEach(i => i.className = '');
   }
+  // The goal for this step, and how close you are.
+  const solo = !!ctx.solo;
+  const needAlong = step.mode === 'along';
+  function paintGoal() {
+    const r = stepRec();
+    const el = $('[data-goal]');
+    if (solo) { el.textContent = ''; return; }
+    if (r.mastered) { el.innerHTML = '<span class="goal-met">✓ Passed</span> ' + goalText(step).replace('Goal: ', '<span class="muted">') + '</span>'; return; }
+    let progress = '';
+    if (!needAlong && r.waitStreak) progress = ` · <b>${r.waitStreak} of ${WAIT_RUNS}</b> so far`;
+    if (needAlong && r.tempo) progress = ` · you're at <b>${r.tempo} bpm</b>`;
+    el.innerHTML = goalText(step) + progress;
+  }
   function paintMode() {
+    paintGoal();
     card.querySelectorAll('.mode-seg button').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
     card.classList.toggle('mode-along', mode === 'along');
     $('[data-bpm]').textContent = `${bpm} bpm`;
@@ -345,19 +360,39 @@ export function runPlay(el, step, onDone, ctx = {}) {
     const accuracy = clean / events.length;
     const seconds = firstAt ? Math.round((performance.now() - firstAt) / 1000) : 0;
     const trouble = [...new Set(events.filter((e, i) => mistakes[i]).map(e => barLabel(e.bar)))];
-    const passed = accuracy >= (step.pass || 0.8);
+    const passed = accuracy >= WAIT_PASS;
+    const whole = loop.from === 1 && loop.to === nBars;
+    const prev = stepRec();
+    const streak = whole ? (passed ? (prev.waitStreak || 0) + 1 : 0) : (prev.waitStreak || 0);
+    const nowMastered = !needAlong && whole && streak >= WAIT_RUNS;
+    const mastered = !!prev.mastered || nowMastered;
     store.log('play', lessonId, step.title, `${Math.round(accuracy * 100)}% clean, ${seconds}s (wait mode)`);
-    saveRec({ best: Math.max(stepRec().best ?? 0, accuracy), at: Date.now() });
+    saveRec({ best: Math.max(prev.best ?? 0, accuracy), at: Date.now(), waitStreak: streak, mastered });
+    paintGoal();
     say('');
     const summary = `${Math.round(accuracy * 100)}% clean`;
     if (loop.repeat) return repeatAfter(summary, resetWait);
+    let text, goalMsg = '';
+    if (!whole) {
+      text = passed ? 'Good. That passage is coming together.' : `Slips in bar ${trouble.join(', ')}. Slow down and go again.`;
+      goalMsg = 'Practising a few bars doesn\'t count towards passing. Play the whole piece when you\'re ready.';
+    } else if (needAlong) {
+      text = passed ? 'Notes are solid. Now switch to <b>Play along</b> to pass this one.' : `Slips in bar ${trouble.join(', ')}. Get the notes solid here first.`;
+    } else if (nowMastered && !prev.mastered) {
+      text = 'Two clean runs in a row. <b>Passed!</b>';
+    } else if (mastered) {
+      text = passed ? 'Clean run. Lovely.' : 'A few slips, but you\'ve already passed this one.';
+    } else if (passed) {
+      text = `Clean run (${Math.round(accuracy * 100)}%). One more like that in a row to pass.`;
+      goalMsg = `${streak} of ${WAIT_RUNS} clean runs.`;
+    } else {
+      text = `${Math.round(accuracy * 100)}% this time. You need ${Math.round(WAIT_PASS * 100)}%. The slips were in bar ${trouble.join(', ')}. Try looping those bars, then go again.`;
+      if (prev.waitStreak) goalMsg = 'That resets the run count. Two clean runs in a row are needed.';
+    }
     showResult({
       stats: [[`${Math.round(accuracy * 100)}%`, 'notes clean'], [`${seconds}s`, 'time taken']],
-      text: passed
-        ? (trouble.length ? `Good. Bar ${trouble.join(', ')} had a slip or two.` : 'Clean run. Lovely.')
-        : `Not quite yet. The slips were in bar ${trouble.join(', ')}. Loop those bars slowly, then go again.`,
-      passed, trouble, res: { accuracy, passed, mode: 'wait' },
-      nextTip: passed ? 'Ready for the next challenge? Try <b>Play along</b> to add timing.' : '',
+      text, goalMsg, passed: mastered, celebrate: nowMastered && !prev.mastered, trouble,
+      res: { accuracy, passed, mastered, mode: 'wait' },
     });
   }
 
@@ -437,7 +472,13 @@ export function runPlay(el, step, onDone, ctx = {}) {
     const notesPct = hitIdx.length / n, timePct = onTime / n;
     const meanErr = hitIdx.length ? hitIdx.reduce((a, i) => a + state.hits[i], 0) / hitIdx.length : 0;
     const trouble = [...new Set(events.filter((e, i) => state.left[i].length || Math.abs(state.hits[i] ?? 999) > tol).map(e => barLabel(e.bar)))];
-    const passed = notesPct >= 0.85 && timePct >= 0.7;
+    const passed = notesPct >= 0.85 && timePct >= 0.7;   // good enough to move up the tempo ladder
+    const whole = loop.from === 1 && loop.to === nBars;
+    const strong = notesPct >= ALONG_NOTES && timePct >= ALONG_TIME;
+    const fullSpeed = playedBpm >= targetBpm * ALONG_SPEED;
+    const prevRec = stepRec();
+    const nowMastered = whole && strong && fullSpeed;
+    const mastered = !!prevRec.mastered || nowMastered;
     const tendency = Math.abs(meanErr) < spbMs * 0.06 ? 'Nice steady timing.'
       : meanErr < 0 ? 'You tend to rush slightly. Feel the clicks and wait for them.' : 'You tend to drag slightly. Keep up with the clicks.';
     let tempoMsg = '';
@@ -448,18 +489,24 @@ export function runPlay(el, step, onDone, ctx = {}) {
     } else if (passed) tempoMsg = `<b>Full speed (${bpm} bpm).</b> That's the piece as written.`;
     else if (stepRec().tempo && notesPct < 0.6 && bpm > 40) tempoMsg = 'Try it a little slower: tap −.';
     saveRec({
-      tempo: bpm, at: Date.now(),
-      best: Math.max(stepRec().best ?? 0, Math.min(notesPct, timePct)),
-      bestAlong: Math.max(stepRec().bestAlong ?? 0, timePct),
+      tempo: bpm, at: Date.now(), mastered,
+      best: Math.max(prevRec.best ?? 0, Math.min(notesPct, timePct)),
+      bestAlong: Math.max(prevRec.bestAlong ?? 0, timePct),
     });
     store.log('play', lessonId, step.title, `${Math.round(notesPct * 100)}% notes, ${Math.round(timePct * 100)}% in time at ${playedBpm} bpm`);
     paintMode();
     const summary = `${Math.round(notesPct * 100)}% notes · ${Math.round(timePct * 100)}% in time`;
     if (loop.repeat) return repeatAfter(summary, startAlong);
+    let goalMsg = '';
+    if (nowMastered && !prevRec.mastered) goalMsg = `<b>Passed!</b> Full speed, ${Math.round(notesPct * 100)}% notes, ${Math.round(timePct * 100)}% in time.`;
+    else if (!mastered && !whole) goalMsg = 'Looping a few bars is practice. Play the whole piece to pass.';
+    else if (!mastered && !fullSpeed) goalMsg = `To pass: play it at full speed (${targetBpm} bpm). Keep climbing.`;
+    else if (!mastered) goalMsg = `To pass you need ${Math.round(ALONG_NOTES * 100)}% notes and ${Math.round(ALONG_TIME * 100)}% in time at full speed.`;
     showResult({
       stats: [[`${Math.round(notesPct * 100)}%`, 'notes right'], [`${Math.round(timePct * 100)}%`, 'in time']],
       text: (passed ? 'Good run. ' : 'Not quite yet. ') + tendency + (trouble.length && !passed ? ` Trouble spots: bar ${trouble.join(', ')}.` : ''),
-      passed, trouble, tempoMsg, res: { accuracy: Math.min(notesPct, timePct), passed, mode: 'along' },
+      goalMsg, passed: mastered, celebrate: nowMastered && !prevRec.mastered, trouble, tempoMsg,
+      res: { accuracy: Math.min(notesPct, timePct), passed, mastered, mode: 'along' },
     });
   }
 
@@ -470,21 +517,23 @@ export function runPlay(el, step, onDone, ctx = {}) {
     say('Going again…');
     setTimeout(() => { if (loop.repeat) again(); }, 1500);
   }
-  function showResult({ stats, text, passed, trouble, res, tempoMsg = '', nextTip = '' }) {
-    resultWrap.innerHTML = `<div class="result overlay">
+  function showResult({ stats, text, passed, trouble, res, tempoMsg = '', goalMsg = '', celebrate = false }) {
+    const canGo = passed || solo;
+    resultWrap.innerHTML = `<div class="result overlay ${celebrate ? 'celebrate' : ''}">
+        ${celebrate ? '<div class="pass-badge">✓ Passed</div>' : ''}
         ${stats.map(([b, s]) => `<div class="stat"><b>${b}</b><span>${s}</span></div>`).join('')}
-        <p class="${passed ? 'good' : 'muted'}">${text}</p>
-        ${tempoMsg ? `<p>${tempoMsg}</p>` : ''}${nextTip ? `<p class="muted small">${nextTip}</p>` : ''}
+        <p>${text}</p>
+        ${tempoMsg ? `<p>${tempoMsg}</p>` : ''}${goalMsg ? `<p class="goal-msg">${goalMsg}</p>` : ''}
         <div class="row">
-          <button class="secondary" data-r="again">↺ Again</button>
+          <button class="${canGo ? 'secondary' : ''}" data-r="again">↺ Again</button>
           ${trouble.length ? `<button class="secondary" data-r="loop">Loop bar${trouble.length > 1 ? 's' : ''} ${Math.min(...trouble)}${trouble.length > 1 ? '–' + Math.max(...trouble) : ''}</button>` : ''}
-          <button data-r="continue" class="${passed ? '' : 'secondary'}">${passed ? 'Continue' : 'Continue anyway'}</button>
+          ${canGo ? `<button data-r="continue">${solo ? 'Done' : 'Continue'}</button>` : ''}
         </div></div>`;
     resultWrap.querySelector('[data-r=again]').onclick = () => { resultWrap.innerHTML = ''; mode === 'along' ? startAlong() : resetWait(); };
     resultWrap.querySelector('[data-r=loop]')?.addEventListener('click', () => {
       setLoop(Math.min(...trouble), Math.max(...trouble), true);
     });
-    resultWrap.querySelector('[data-r=continue]').onclick = () => { stopAll(); onDone(res); };
+    resultWrap.querySelector('[data-r=continue]')?.addEventListener('click', () => { stopAll(); onDone(res); });
   }
   function setLoop(from, to, repeat = loop.repeat) {
     loop = { from, to: Math.max(from, to), repeat };

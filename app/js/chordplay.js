@@ -8,6 +8,7 @@ import { renderChord } from './notation.js';
 import { listenChord, chordLabel, NEAR_C, voicingMidis } from './chords.js';
 import { h, askHTML } from './activities.js';
 import { playNote } from './audio.js';
+import { goalText, CHANGE_SECS, MAX_WRONG } from './goals.js';
 
 const voicingOf = (step, sym) => (step.voicings || NEAR_C)[sym] || NEAR_C[sym];
 const spell = names => names.map(n => n.replace(/-?\d/, '').replace('#', '♯')).join(' – ');
@@ -77,7 +78,7 @@ export function runChords(el, step, onDone) {
   let i, wrong, t0, off = null;
   el.innerHTML = '';
   const card = h(`<div class="activity chords">
-      <div class="play-head"><div class="ph-text"><h2>${step.title}</h2><p class="intro">${step.intro || ''}</p></div>
+      <div class="play-head"><div class="ph-text"><h2>${step.title}</h2><p class="intro">${step.intro || ''}</p><p class="goal">${goalText({ type: 'chords' })}</p></div>
         <button class="secondary" data-hear>♫ Hear it</button></div>
       <div class="chord-cards">${seq.map((c, k) => `<span class="cc" data-k="${k}">${c}</span>`).join('')}</div>
       ${nowNextHTML('')}
@@ -99,13 +100,17 @@ export function runChords(el, step, onDone) {
     const secs = (performance.now() - t0) / 1000;
     const perChange = seq.length > 1 ? secs / (seq.length - 1) : secs;
     store.log('chords', step.id, step.title, `${seq.length} chords, ${perChange.toFixed(1)}s per change`);
-    resultWrap.innerHTML = `<div class="result overlay">
+    const mastered = perChange <= CHANGE_SECS && wrong <= MAX_WRONG;
+    const why = perChange > CHANGE_SECS ? `Changes took ${perChange.toFixed(1)} s. Aim for under ${CHANGE_SECS} s: look at "Next" early and move before you need to.`
+      : `${wrong} wrong chords. Aim for ${MAX_WRONG} or fewer: slow down and check the marked keys.`;
+    resultWrap.innerHTML = `<div class="result overlay ${mastered ? 'celebrate' : ''}">
+      ${mastered ? '<div class="pass-badge">✓ Passed</div>' : ''}
       <div class="stat"><b>${perChange.toFixed(1)}s</b><span>per chord change</span></div>
       <div class="stat"><b>${wrong}</b><span>wrong chords</span></div>
-      <p class="muted">${perChange <= 2 ? 'Smooth changes. That\'s quick enough for songs.' : 'Changes get quicker with repetition. Aim for under 2 seconds.'}</p>
-      <div class="row"><button class="secondary" data-r="again">↺ Again</button><button data-r="continue">Continue</button></div></div>`;
+      <p>${mastered ? (perChange <= 1.5 ? 'Smooth, quick changes. Ready for songs.' : 'Good changes. They\'ll get quicker still with practice.') : why}</p>
+      <div class="row"><button class="${mastered ? 'secondary' : ''}" data-r="again">↺ Again</button>${mastered ? '<button data-r="continue">Continue</button>' : ''}</div></div>`;
     resultWrap.querySelector('[data-r=again]').onclick = start;
-    resultWrap.querySelector('[data-r=continue]').onclick = () => onDone({ ok: true, best: perChange <= 2 ? 1 : 0.7 });
+    resultWrap.querySelector('[data-r=continue]')?.addEventListener('click', () => onDone({ ok: true, mastered, best: Math.min(1, CHANGE_SECS / Math.max(perChange, 0.1)) }));
   }
   function start() {
     off?.();
@@ -149,7 +154,7 @@ export function runSong(el, step, onDone) {
   let i = 0, wrong = 0;
   el.innerHTML = '';
   const card = h(`<div class="activity song">
-      <div class="play-head"><div class="ph-text"><h2>${step.title}</h2><p class="intro">${step.intro || ''}</p></div>
+      <div class="play-head"><div class="ph-text"><h2>${step.title}</h2><p class="intro">${step.intro || ''}</p><p class="goal">${goalText({ type: 'song' })}</p></div>
         <button class="secondary" data-restart>↺ From the top</button></div>
       <div class="song-body">
         <div class="sheet">${html}${step.credit ? `<p class="credit muted small">${step.credit}</p>` : ''}</div>
@@ -180,13 +185,15 @@ export function runSong(el, step, onDone) {
     if (i < chords.length) return;
     dock.hint(null);
     store.log('song', step.id, step.title, `Played through, ${wrong} wrong chord${wrong === 1 ? '' : 's'}`);
-    resultWrap.innerHTML = `<div class="result overlay">
+    const mastered = wrong <= MAX_WRONG;
+    resultWrap.innerHTML = `<div class="result overlay ${mastered ? 'celebrate' : ''}">
+      ${mastered ? '<div class="pass-badge">✓ Passed</div>' : ''}
       <h2>${step.title}</h2>
-      <p>${wrong ? `${wrong} wrong chord${wrong === 1 ? '' : 's'} along the way. It gets smoother every time through.` : 'Every chord right first time. Lovely.'}</p>
+      <p>${!wrong ? 'Every chord right first time. Lovely.' : mastered ? `${wrong} wrong chord${wrong === 1 ? '' : 's'}, which is within the goal.` : `${wrong} wrong chords. Aim for ${MAX_WRONG} or fewer. Glance at "Next" before each change.`}</p>
       <p class="muted small">Next step: keep a steady beat, with one chord per bar and your voice leading.</p>
-      <div class="row"><button class="secondary" data-r="again">↺ Sing it again</button><button data-r="continue">Continue</button></div></div>`;
+      <div class="row"><button class="${mastered ? 'secondary' : ''}" data-r="again">↺ Sing it again</button>${mastered ? '<button data-r="continue">Continue</button>' : ''}</div></div>`;
     resultWrap.querySelector('[data-r=again]').onclick = restart;
-    resultWrap.querySelector('[data-r=continue]').onclick = () => onDone({ ok: true, best: wrong <= 2 ? 1 : 0.8 });
+    resultWrap.querySelector('[data-r=continue]')?.addEventListener('click', () => onDone({ ok: true, mastered, best: mastered ? 1 : 0.7 }));
   }, { onWrong: what => { wrong++; fb.textContent = `That sounded like ${what}. The chord here is ${chordLabel(chords[i])}.`; fb.className = 'feedback bad'; } });
   card.querySelector('[data-restart]').onclick = restart;
   return () => { off(); dock.hint(null); };

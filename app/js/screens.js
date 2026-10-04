@@ -11,6 +11,8 @@ import { renderNotes, renderScore } from './notation.js';
 import { createKeyboard } from './keyboard.js';
 import { unlockedNotes, noteState } from './srs.js';
 import { session } from './session.js';
+import { dock } from './dock.js';
+import { goalText, stepPassed, GYM_PASS } from './goals.js';
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const go = hash => { location.hash = hash; };
@@ -66,8 +68,9 @@ function reviewPiece() {
 // ---------------------------------------------------------------- welcome / placement
 export function renderWelcome(root, params) {
   if (params.get('step') === 'placement') return renderPlacement(root);
+  if (params.get('new') === '1' || !store.current()) return renderNewPlayer(root);
   root.innerHTML = `<section class="page narrow welcome">
-    <h1>Welcome to your piano tutor</h1>
+    <h1>Welcome, ${esc(store.current().name)}</h1>
     <p class="lead">Prop the tablet on the music stand. The app listens through the microphone while you play,
        then moves on when you get the notes right and points out where things went wrong.</p>
     <ul class="ticks">
@@ -83,6 +86,59 @@ export function renderWelcome(root, params) {
   </section>`;
   root.querySelector('[data-c=new]').onclick = () => { store.update(s => { s.onboarded = true; }); go('#/today'); };
   root.querySelector('[data-c=back]').onclick = () => go('#/welcome?step=placement');
+}
+
+function renderNewPlayer(root) {
+  const first = !store.players().length;
+  root.innerHTML = `<section class="page narrow welcome">
+    <h1>${first ? 'Welcome to your piano tutor' : 'Add a player'}</h1>
+    <p class="lead">${first ? 'First, who\'s playing? Everyone who uses this tablet gets their own progress.' : 'Each player has their own lessons, progress and reading cards.'}</p>
+    <form class="name-form">
+      <label for="pname">Name</label>
+      <input id="pname" name="pname" autocomplete="off" maxlength="24" placeholder="e.g. Jonny" required>
+      <button type="submit">Continue</button>
+    </form>
+    ${first ? '' : '<p><a href="#/players">← Back</a></p>'}
+  </section>`;
+  const form = root.querySelector('form');
+  form.querySelector('input').focus();
+  form.onsubmit = e => {
+    e.preventDefault();
+    const name = form.pname.value.trim();
+    if (!name) return;
+    store.switchTo(store.addPlayer(name));
+    markPicked();
+    go('#/welcome');
+  };
+}
+
+// ---------------------------------------------------------------- who's playing?
+export const markPicked = () => { try { sessionStorage.setItem('pt.picked', '1'); } catch {} };
+export function renderPlayers(root) {
+  const list = store.players();
+  const cur = store.current();
+  root.innerHTML = `<section class="page narrow players">
+    <h1>Who's playing?</h1>
+    <div class="player-grid">
+      ${list.map(p => {
+        let info = '';
+        try {
+          const d = JSON.parse(localStorage.getItem('pianoTutor.v1.' + p.id) || '{}');
+          const done = Object.values(d.lessons || {}).filter(l => l.done).length;
+          info = d.lastActiveAt ? `Last played ${ago(d.lastActiveAt)} · ${done} lessons passed` : 'New player';
+        } catch {}
+        return `<button class="player-card ${cur?.id === p.id ? 'on' : ''}" data-id="${p.id}">
+          <span class="avatar" style="background:${p.colour}">${esc(p.name[0].toUpperCase())}</span>
+          <b>${esc(p.name)}</b><span class="muted small">${esc(info)}</span></button>`;
+      }).join('')}
+      <a class="player-card add" href="#/welcome?new=1"><span class="avatar plus">+</span><b>Add a player</b></a>
+    </div>
+  </section>`;
+  root.querySelectorAll('[data-id]').forEach(b => b.onclick = () => {
+    store.switchTo(b.dataset.id);
+    markPicked();
+    go(store.get().onboarded ? '#/today' : '#/welcome');
+  });
 }
 
 function renderPlacement(root) {
@@ -167,7 +223,7 @@ export function renderToday(root, params) {
   root.innerHTML = `<section class="page today">
     <header class="hero">
       <div>
-        <h1>${hello}</h1>
+        <h1>${hello}${store.current() ? `, ${esc(store.current().name)}` : ''}</h1>
         <p class="lead">${last ? `Last practice: <b>${ago(last)}</b>.` : 'Your first session. Welcome.'}
           ${todayMins ? ` ${todayMins} min practised today.` : ''}</p>
       </div>
@@ -197,14 +253,15 @@ export function renderPath(root) {
   root.innerHTML = `<section class="page path">
     <h1>Your path</h1>
     ${TRACKS.map(t => { const nextId = nextLessonId(t.id); const open = trackOpen(t); return `<div class="track ${t.comingSoon ? 'soon' : ''} ${open ? '' : 'locked'}">
-      <div class="track-head"><h2>${t.title}</h2><p class="muted">${t.blurb}</p>${!open && t.requiresText ? `<p class="soon-note">${t.requiresText} You can still peek at the lessons.</p>` : ''}</div>
+      <div class="track-head"><h2>${t.title}</h2><p class="muted">${t.blurb}</p>${!open && t.requiresText ? `<p class="soon-note">🔒 ${t.requiresText}</p>` : ''}</div>
       ${t.comingSoon ? `<p class="soon-note">${t.comingSoon}</p>` : t.units.map((u, ui) => `
         <div class="unit"><h3><span class="unum">${ui + 1}</span>${UNITS[u].title}</h3>
           <ul class="lessons">${UNITS[u].lessons.map(id => {
             const L = LESSONS[id], rec = s.lessons[id];
-            const state = rec?.done ? 'done' : id === nextId ? 'next' : '';
+            const locked = !!lockedBy(id);
+            const state = rec?.done ? 'done' : locked ? 'locked' : id === nextId ? 'next' : '';
             return `<li class="${state}"><a href="#/lesson/${id}">
-              <span class="state">${rec?.done ? '✓' : id === nextId ? '●' : ''}</span>
+              <span class="state">${rec?.done ? '✓' : locked ? '🔒' : id === nextId ? '●' : ''}</span>
               <span class="lt">${L.title}${L.milestone ? ' <span class="flag" title="Milestone">⚑</span>' : ''}</span>
               <span class="muted small">${rec?.viaPlacement ? 'placed' : `${L.minutes} min`}</span></a></li>`;
           }).join('')}</ul></div>`).join('')}
@@ -213,15 +270,39 @@ export function renderPath(root) {
 }
 
 // ---------------------------------------------------------------- lesson
+// A lesson unlocks once the lesson before it in the same track is complete
+// (the first lesson of a track may also need something from another track).
+export function lockedBy(id) {
+  const t = trackOf(id);
+  if (!t) return null;
+  const ids = trackLessons(t.id);
+  const k = ids.indexOf(id);
+  const s = store.get();
+  if (s.lessons[id]?.done) return null;
+  if (k === 0) return t.requires && !s.lessons[t.requires]?.done ? t.requires : null;
+  return s.lessons[ids[k - 1]]?.done ? null : ids[k - 1];
+}
+
 export function renderLesson(root, params, id) {
   const L = LESSONS[id];
   if (!L) { root.innerHTML = `<section class="page"><p>Lesson not found.</p></section>`; return; }
   const solo = params.get('solo') === '1'; // play a single step (review) then leave
+  const blocker = solo ? null : lockedBy(id);
+  if (blocker) {
+    dock.show(false);
+    root.innerHTML = `<section class="page narrow locked-page">
+      <a class="back" href="#/path">← Path</a>
+      <h1>🔒 ${esc(L.title)}</h1>
+      <p class="lead">This lesson unlocks when you've passed <b>${esc(LESSONS[blocker].title)}</b>.</p>
+      <a class="btn" href="#/lesson/${blocker}">Go to ${esc(LESSONS[blocker].title)}</a>
+    </section>`;
+    return;
+  }
+  const passedAt = j => stepPassed(L.steps[j], store.get().lessons[id]?.steps?.[j]);
   let stepIdx = Number(params.get('step')) || 0;
   if (!params.has('step') && !solo) {
-    // resume at the first unfinished step
-    const rec = store.get().lessons[id];
-    if (rec && !rec.done) { const firstOpen = L.steps.findIndex((_, i) => !rec.steps?.[i]?.done); if (firstOpen > 0) stepIdx = firstOpen; }
+    // resume at the first step not yet passed
+    if (!store.get().lessons[id]?.done) { const firstOpen = L.steps.findIndex((_, j) => !passedAt(j)); if (firstOpen > 0) stepIdx = firstOpen; }
   }
   let cleanup = null;
 
@@ -243,20 +324,22 @@ export function renderLesson(root, params, id) {
       const rec = store.lesson(id);
       const prev = rec.steps[i] || {};
       const best = extra.best == null ? prev.best : Math.max(prev.best ?? 0, extra.best);
-      rec.steps[i] = { ...prev, ...extra, done: true, at: Date.now(), best };
+      const mastered = !!prev.mastered || !!extra.mastered;
+      rec.steps[i] = { ...prev, ...extra, done: true, mastered, at: Date.now(), best };
       rec.lastAt = Date.now();
     });
   }
   function completeLesson() {
     const first = !store.get().lessons[id]?.done;
     store.update(s => { const rec = store.lesson(id); rec.done = true; rec.completedAt = rec.completedAt || Date.now(); });
-    if (first) store.log('lesson', id, L.title, 'Lesson complete');
+    if (first) store.log('lesson', id, L.title, 'Lesson passed');
     const nextId = nextLessonId(trackOf(id)?.id);
     const following = session.active;
     body.innerHTML = `<div class="complete">
       ${L.milestone && first ? `<div class="milestone-banner"><span class="flag">⚑</span><div><b>Milestone reached</b><p>${esc(L.milestone)}</p></div></div>` : ''}
-      <h2>Lesson complete</h2>
+      <div class="pass-badge big">✓ Lesson passed</div>
       ${L.unlocks?.length ? `<p>New notes in your reading cards: <b>${L.unlocks.join(', ')}</b></p>` : ''}
+      ${nextId && first ? `<p class="muted">Unlocked: <b>${esc(LESSONS[nextId].title)}</b></p>` : ''}
       <div class="row">
         ${following ? `<button data-next-item>${session.peek() ? 'Next in today\'s session →' : 'Finish session'}</button>`
           : nextId ? `<button data-next>Next lesson: ${esc(LESSONS[nextId].title)}</button>` : ''}
@@ -265,20 +348,38 @@ export function renderLesson(root, params, id) {
     nav.innerHTML = '';
     body.querySelector('[data-next]')?.addEventListener('click', () => go(`#/lesson/${nextId}`));
     body.querySelector('[data-next-item]')?.addEventListener('click', () => session.advance());
-    bar.forEach(b => b.className = 'done');
+    paintBar(-1);
+  }
+  // Reached the end: complete the lesson only if every step has been passed.
+  function tryComplete() {
+    const open = L.steps.map((_, j) => j).filter(j => !passedAt(j));
+    if (!open.length) return completeLesson();
+    cleanup?.(); cleanup = null;
+    nav.innerHTML = '';
+    paintBar(-1);
+    body.innerHTML = `<div class="complete">
+      <h2>Nearly there</h2>
+      <p>To pass this lesson, ${open.length === 1 ? 'this step still needs' : 'these steps still need'} passing:</p>
+      <div class="todo">${open.map(j => `<button class="secondary" data-go="${j}">${esc(stepLabel(L.steps[j]))}<span class="muted small">${esc(goalText(L.steps[j]).replace('Goal: ', ''))}</span></button>`).join('')}</div>
+      <p><a href="#/today">Back to Today</a></p></div>`;
+    body.querySelectorAll('[data-go]').forEach(b => b.onclick = () => show(Number(b.dataset.go)));
+  }
+  function paintBar(cur) {
+    bar.forEach((b, j) => { b.className = j === cur ? 'cur' : passedAt(j) ? 'done' : store.get().lessons[id]?.steps?.[j]?.done ? 'tried' : ''; });
   }
 
   function show(i) {
     cleanup?.(); cleanup = null;
     stepIdx = i;
-    const rec = store.get().lessons[id];
-    bar.forEach((b, j) => { b.className = j === i ? 'cur' : rec?.steps?.[j]?.done ? 'done' : ''; });
+    paintBar(i);
     const st = L.steps[i];
-    const finish = (extra) => {
-      markStep(i, extra);
+    // a step's own activity decides whether it was passed (r.mastered); simple steps pass by finishing
+    const finish = (extra = {}) => {
+      markStep(i, { ...extra, mastered: extra.mastered ?? ['text', 'find', 'chord'].includes(st.type) });
       if (solo) { session.active ? session.advance() : go('#/today'); return; }
-      if (i + 1 < L.steps.length) show(i + 1); else completeLesson();
+      if (i + 1 < L.steps.length) show(i + 1); else tryComplete();
     };
+    const navHTML = `${i > 0 ? '<button class="secondary" data-prev>← Back</button>' : ''}${solo ? '' : `<button class="link" data-skip title="Look ahead. This step won't count as passed.">Skip for now</button>`}`;
     nav.innerHTML = '';
     body.innerHTML = '';
     if (st.type === 'text') {
@@ -292,34 +393,44 @@ export function renderLesson(root, params, id) {
       body.querySelector('[data-nextstep]').onclick = () => finish();
     } else if (st.type === 'find') {
       cleanup = runFind(body, st, () => finish());
-      nav.innerHTML = `${i > 0 ? '<button class="secondary" data-prev>← Back</button>' : ''}<button class="link" data-skip>Skip</button>`;
+      nav.innerHTML = navHTML;
     } else if (st.type === 'gym') {
       const wrap = document.createElement('div');
+      body.innerHTML = `<p class="goal center">${goalText(st)}</p>`;
       body.appendChild(wrap);
-      cleanup = runGym(wrap, { pool: st.notes, count: st.count, id, title: L.title }, r => {
-        wrap.innerHTML = gymSummaryHTML(r) + `<div class="row"><button data-cont>Continue</button></div>`;
-        wrap.querySelector('[data-cont]').onclick = () => finish({ best: r.right / r.total });
-      });
-      nav.innerHTML = `${i > 0 ? '<button class="secondary" data-prev>← Back</button>' : ''}<button class="link" data-skip>Skip</button>`;
+      const runIt = () => {
+        cleanup = runGym(wrap, { pool: st.notes, count: st.count, id, title: L.title }, r => {
+          markStep(i, { best: r.right / r.total, mastered: r.mastered });
+          wrap.innerHTML = gymSummaryHTML(r) + (r.mastered
+            ? `<div class="pass-badge">✓ Passed</div><div class="row center"><button data-cont>Continue</button></div>`
+            : `<p class="goal-msg center">You need ${Math.round(GYM_PASS * 100)}% right first time (${Math.ceil(GYM_PASS * r.total)} of ${r.total}). Have another go. The notes you missed will come up more.</p>
+               <div class="row center"><button data-again>↺ Try again</button></div>`);
+          wrap.querySelector('[data-cont]')?.addEventListener('click', () => finish({ best: r.right / r.total, mastered: true }));
+          wrap.querySelector('[data-again]')?.addEventListener('click', runIt);
+        });
+      };
+      runIt();
+      nav.innerHTML = navHTML;
     } else if (st.type === 'chord' || st.type === 'chords' || st.type === 'song') {
       const wrap = document.createElement('div');
       body.appendChild(wrap);
       const run = { chord: runChord, chords: runChords, song: runSong }[st.type];
-      cleanup = run(wrap, { ...st, id }, r => finish({ best: r.best ?? 1 }));
-      nav.innerHTML = `${i > 0 ? '<button class="secondary" data-prev>← Back</button>' : ''}<button class="link" data-skip>Skip</button>`;
+      cleanup = run(wrap, { ...st, id }, r => finish({ best: r.best ?? 1, mastered: r.mastered ?? true }));
+      nav.innerHTML = navHTML;
     } else if (st.type === 'play') {
       const wrap = document.createElement('div');
       body.appendChild(wrap);
-      cleanup = runPlay(wrap, st, r => finish({ best: r.accuracy, passed: r.passed }), { lessonId: id, stepIdx: i, mode: params.get('mode') });
-      nav.innerHTML = `${i > 0 ? '<button class="secondary" data-prev>← Back</button>' : ''}<button class="link" data-skip>Skip</button>`;
+      cleanup = runPlay(wrap, st, r => finish({ best: r.accuracy, passed: r.passed, mastered: r.mastered }), { lessonId: id, stepIdx: i, mode: params.get('mode'), solo });
+      nav.innerHTML = navHTML;
     }
     nav.querySelector('[data-prev]')?.addEventListener('click', () => show(i - 1));
-    nav.querySelector('[data-skip]')?.addEventListener('click', () => (i + 1 < L.steps.length ? show(i + 1) : completeLesson()));
+    nav.querySelector('[data-skip]')?.addEventListener('click', () => (i + 1 < L.steps.length ? show(i + 1) : tryComplete()));
     window.scrollTo({ top: 0 });
   }
   show(Math.min(stepIdx, L.steps.length - 1));
   return () => cleanup?.();
 }
+const stepLabel = st => st.title || st.prompt || (st.type === 'chord' ? `Play ${st.chord}` : 'Step');
 
 // ---------------------------------------------------------------- reading gym
 export function renderGym(root, params) {
@@ -390,7 +501,7 @@ export function renderProgress(root) {
   }));
 
   root.innerHTML = `<section class="page progress">
-    <h1>Progress</h1>
+    <h1>${store.players().length > 1 ? `${esc(store.current()?.name || '')}'s progress` : 'Progress'}</h1>
     <div class="grid2">
       <div class="card">
         <h2>Level</h2>
@@ -474,9 +585,20 @@ export function renderSettings(root) {
       <p class="small" data-backupmsg></p>
     </div>
     <div class="card">
+      <h2>Players</h2>
+      <p class="muted">Everyone gets their own progress. Mic, timing and display settings are shared by the whole tablet.</p>
+      <ul class="player-list">${store.players().map(p => `<li data-pid="${p.id}">
+        <span class="avatar sm" style="background:${p.colour}">${esc(p.name[0].toUpperCase())}</span>
+        <input value="${esc(p.name)}" maxlength="24" aria-label="Name">
+        ${p.id === store.current()?.id ? '<span class="pill ok">playing</span>' : `<button class="link" data-switch>Switch</button>`}
+        ${store.players().length > 1 ? '<button class="link danger-link" data-remove>Remove</button>' : ''}
+      </li>`).join('')}</ul>
+      <div class="row"><a class="btn secondary" href="#/welcome?new=1">+ Add a player</a></div>
+    </div>
+    <div class="card">
       <h2>Start over</h2>
       <div class="row"><a class="btn secondary" href="#/welcome?step=placement">Retake the reading check</a>
-        <button class="danger" data-reset>Erase all progress</button></div>
+        <button class="danger" data-reset>Erase ${esc(store.current()?.name || 'this player')}'s progress</button></div>
     </div>
     <p class="small muted">Piano Tutor · version <span data-ver></span></p>
   </section>`;
@@ -547,6 +669,18 @@ export function renderSettings(root) {
     if (!armed) { armed = true; e.target.textContent = 'Tap again to erase everything'; setTimeout(() => { armed = false; e.target.textContent = 'Erase all progress'; }, 4000); return; }
     store.reset(); go('#/welcome');
   };
+  root.querySelectorAll('[data-pid]').forEach(li => {
+    const id = li.dataset.pid;
+    li.querySelector('input').onchange = e => { store.renamePlayer(id, e.target.value); };
+    li.querySelector('[data-switch]')?.addEventListener('click', () => { store.switchTo(id); markPicked(); go(store.get().onboarded ? '#/today' : '#/welcome'); });
+    let sure = false;
+    li.querySelector('[data-remove]')?.addEventListener('click', e => {
+      if (!sure) { sure = true; e.target.textContent = 'Tap again to remove (deletes their progress)'; setTimeout(() => { sure = false; e.target.textContent = 'Remove'; }, 4000); return; }
+      store.removePlayer(id);
+      if (!store.get().onboarded) go('#/welcome');
+      else window.dispatchEvent(new HashChangeEvent('hashchange')); // redraw Settings
+    });
+  });
   return () => { offStatus(); offNote(); clearInterval(timer); stopCal(); };
 }
 const midiName = m => { const n = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B']; return n[m % 12] + (Math.floor(m / 12) - 1); };

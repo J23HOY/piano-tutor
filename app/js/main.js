@@ -1,7 +1,7 @@
 import { store } from './store.js';
 import { input } from './input.js';
 import { dock } from './dock.js';
-import { renderWelcome, renderToday, renderPath, renderLesson, renderGym, renderProgress, renderSettings } from './screens.js';
+import { renderWelcome, renderToday, renderPath, renderLesson, renderGym, renderProgress, renderSettings, renderPlayers } from './screens.js';
 
 const root = document.getElementById('view');
 const chip = document.getElementById('listen');
@@ -24,11 +24,16 @@ const ROUTES = [
   [/^\/gym$/, renderGym],
   [/^\/progress$/, renderProgress],
   [/^\/settings$/, renderSettings],
+  [/^\/players$/, renderPlayers],
 ];
 function route() {
   const raw = location.hash.slice(1) || '/today';
   const [path, qs] = raw.split('?');
-  if (!store.get().onboarded && path !== '/welcome') { location.replace('#/welcome'); return; }
+  // Shared tablet: ask who's playing when the app is opened (once per visit).
+  let picked = false; try { picked = !!sessionStorage.getItem('pt.picked'); } catch {}
+  if (store.players().length > 1 && !picked && path !== '/players' && path !== '/welcome') { location.replace('#/players'); return; }
+  if (!store.get().onboarded && path !== '/welcome' && path !== '/players') { location.replace('#/welcome'); return; }
+  paintPlayerChip();
   const params = new URLSearchParams(qs || '');
   cleanup?.(); cleanup = null;
   const hit = ROUTES.find(([re]) => re.test(path));
@@ -66,6 +71,15 @@ function fitToScreen() {
 new ResizeObserver(fitToScreen).observe(root);
 window.addEventListener('resize', fitToScreen);
 window.addEventListener('hashchange', route);
+
+// ---------------- player chip (top right): who's playing, tap to switch
+const playerChip = document.getElementById('player');
+function paintPlayerChip() {
+  const p = store.current();
+  playerChip.hidden = !p;
+  if (p) playerChip.innerHTML = `<span class="avatar sm" style="background:${p.colour}">${p.name[0].toUpperCase()}</span><span class="pname">${p.name.replace(/[<&]/g, '')}</span>`;
+}
+playerChip.onclick = () => { location.hash = '#/players'; };
 
 // ---------------- listening chip
 // Browsers only allow audio to start after a tap, so the first tap anywhere starts the mic.

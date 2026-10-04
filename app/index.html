@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#23606e">
+  <meta name="theme-color" content="#2563c4">
   <title>Piano Tutor</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="css/app.css">
-  <script>window.APP_VERSION = '0.2.3';</script>
+  <script>window.APP_VERSION = '0.3.0';</script>
   <script src="vendor/vexflow.js"></script>
 </head>
 <body>
@@ -21,6 +21,7 @@
       <a href="#/gym" data-r="/gym">Reading Gym</a>
       <a href="#/progress" data-r="/progress">Progress</a>
     </nav>
+    <button id="player" class="player-chip" hidden title="Switch player"></button>
     <button id="listen" class="listen">Tap to listen</button>
     <a class="gear" href="#/settings" aria-label="Settings">⚙</a>
   </header>

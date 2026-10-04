@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#23606e"/>
+  <rect width="512" height="512" rx="112" fill="#2563c4"/>
   <g transform="translate(96 250)">
     <rect x="0" y="0" width="320" height="170" rx="18" fill="#fffdf8"/>
-    <g stroke="#23606e" stroke-width="6"><line x1="64" y1="0" x2="64" y2="170"/><line x1="128" y1="0" x2="128" y2="170"/><line x1="192" y1="0" x2="192" y2="170"/><line x1="256" y1="0" x2="256" y2="170"/></g>
+    <g stroke="#2563c4" stroke-width="6"><line x1="64" y1="0" x2="64" y2="170"/><line x1="128" y1="0" x2="128" y2="170"/><line x1="192" y1="0" x2="192" y2="170"/><line x1="256" y1="0" x2="256" y2="170"/></g>
     <g fill="#1e1e22"><rect x="44" y="0" width="40" height="100" rx="6"/><rect x="108" y="0" width="40" height="100" rx="6"/><rect x="236" y="0" width="40" height="100" rx="6"/></g>
   </g>
   <g fill="#fffdf8"><ellipse cx="226" cy="196" rx="44" ry="32" transform="rotate(-22 226 196)"/><rect x="256" y="72" width="16" height="126" rx="4"/><path d="M264 72 q70 18 64 92 q-10-46-64-50z"/></g>

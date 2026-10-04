@@ -31,7 +31,18 @@ if (preset === 'midway') {
   ];
   base.lastActiveAt = now - 5 * DAY;
 }
+if (p.get('picked')) sessionStorage.setItem('pt.picked', '1');
 if (p.get('gap')) base.lastActiveAt = now - Number(p.get('gap')) * DAY;
-localStorage.setItem('pianoTutor.v1', JSON.stringify(base));
+if (p.get('streak1')) { base.lessons['l4-4'] = { done: false, steps: { 0: { done: true, mastered: true }, 1: { done: true, waitStreak: 1 } } }; }
+if (p.get('players') === '2') {
+  // two players, stored in the multi-player format
+  localStorage.setItem('pianoTutor.profiles', JSON.stringify({ active: 'pA', list: [
+    { id: 'pA', name: 'Jonny', colour: '#2563c4', createdAt: now }, { id: 'pB', name: 'Ella', colour: '#c2410c', createdAt: now }] }));
+  localStorage.setItem('pianoTutor.v1.pA', JSON.stringify(base));
+  localStorage.setItem('pianoTutor.v1.pB', JSON.stringify({ version: 1, createdAt: now, settings: {}, onboarded: false, lessons: {}, notes: {}, practice: {}, history: [] }));
+} else if (preset !== 'empty') {
+  // single-player data in the pre-v0.3 format: the app moves it into a player profile
+  localStorage.setItem('pianoTutor.v1', JSON.stringify(base));
+}
 location.replace('../app/' + (p.get('sim') ? '?sim=' + p.get('sim') + '&simgap=' + (p.get('simgap') || 150) + '&simdelay=' + (p.get('simdelay') || 1000) + (p.get('autostart') ? '&autostart=1' : '') + (p.get('simsrc') ? '&simsrc=' + p.get('simsrc') : '') : '') + '#' + (p.get('to') || '/today'));
 </script>

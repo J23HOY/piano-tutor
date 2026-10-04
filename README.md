@@ -56,6 +56,20 @@ upwards, listens via mic (or USB MIDI), gives feedback and saves progress.
   with notes left ringing): ~99% (old detector failed the C→G cases); weak-fundamental sound
   ~85%, mostly octave slips (forgiven when matching).
 
+- 4 Oct 2026: **v0.3.0**, from Jonny's requests:
+  - **Players** (his daughter may use it): each player has their own progress
+    (`pianoTutor.v1.<id>`). Tablet-wide settings (mic, timing, theme, keys, metronome) are
+    shared (`pianoTutor.device`). "Who's playing?" picker on launch when 2+ players, a player
+    chip top right, and Players in Settings (rename/switch/add/remove). Existing single-player
+    data is migrated into a player called "Jonny".
+  - **Pass to progress** (`app/js/goals.js`): every step shows its goal, and a lesson only
+    completes, unlocking the next, when every step is passed. Wait mode: 2 runs in a row with
+    90%+ clean (whole piece). Play along steps: full speed, 90%+ notes, 80%+ in time.
+    Reading cards: 80%+ first time. Chord changes: under 2.5 s average, 2 or fewer wrong.
+    Songs: 2 or fewer wrong chords. "Continue anyway" removed; "Skip for now" looks ahead
+    without passing. Later lessons are locked.
+  - Blue accent everywhere (buttons, progress ticks, icon) instead of teal/green.
+
 ## Links
 - Repo: https://github.com/J23HOY/piano-tutor
 - **App (tablet):** https://j23hoy.github.io/piano-tutor/app/
@@ -69,7 +83,7 @@ upwards, listens via mic (or USB MIDI), gives feedback and saves progress.
 - Dev: `python -m http.server 8765 --bind 127.0.0.1` from the repo root, then
   `tests/shot.sh "preset=midway&to=/today" name` takes screenshots with seeded progress.
   Add `&sim=60,62,64` to play notes into the app (`60+64+67` = chord, `r` = skip a step,
-  `&simgap=ms`, `&simdelay=ms`, `&autostart=1` starts Play along, `&simsrc=mic` pretends the notes came from the mic). Presets: `new`, `fresh`, `placed`, `midway`.
+  `&simgap=ms`, `&simdelay=ms`, `&autostart=1` starts Play along, `&simsrc=mic` pretends the notes came from the mic). Presets: `new`, `fresh`, `placed`, `midway`, `empty` (no players). `&players=2` adds a 2nd player, `&picked=1` skips the picker, `&streak1=1` seeds one clean Ode to Joy run.
   `tests/chroma.html` (headless `--dump-dom`) prints the chord-recognition results.
   `tests/pitch.html` compares pitch detectors on synthetic notes (incl. a ringing previous note).
   `tests/live.html` plays a melody through the real-time mic pipeline; it needs
