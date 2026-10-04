@@ -27,6 +27,13 @@ function directionHint(played, target) {
   return `Try ${size} ${dir}.`;
 }
 
+// Height left between an element's top and the on-screen keys, minus `reserve` for things below it.
+function spaceBelow(el, reserve) {
+  const dock = document.getElementById('dock');
+  const dockH = dock && !dock.hidden ? dock.offsetHeight : 0;
+  return window.innerHeight - el.getBoundingClientRect().top - dockH - reserve;
+}
+
 // ---------------------------------------------------------------- find
 export function runFind(el, step, onDone) {
   const want = step.count || 1;
@@ -109,7 +116,8 @@ export function runGym(el, opts, onDone) {
     misses = 0; busy = false;
     counter.textContent = `${round} / ${count}`;
     staff.classList.remove('good', 'bad');
-    renderNotes(staff, [current], { scale: 1.4 });
+    const room = spaceBelow(staff, mode === 'name' ? 100 : 24);
+    renderNotes(staff, [current], { scale: Math.max(0.8, Math.min(1.7, room / 236)), width: 520 });
     fb.textContent = mode === 'name' ? 'What note is this?' : 'Play this note';
     fb.className = 'feedback';
     startAt = performance.now();
@@ -173,11 +181,12 @@ export function runPlay(el, step, onDone, { lessonId } = {}) {
   const passMark = step.pass || 0.8;
   el.innerHTML = '';
   const card = h(`<div class="activity play">
-      <p class="intro">${step.intro || ''}</p>
-      <div class="toolbar">
-        <button class="secondary" data-act="hear">▶ Hear it</button>
-        <button class="secondary" data-act="restart">↺ Start again</button>
-        <span class="muted small">Wait mode: the music waits for you</span>
+      <div class="play-head">
+        <div><h2>${step.title}</h2><p class="intro">${step.intro || ''}</p></div>
+        <div class="toolbar">
+          <button class="secondary" data-act="hear">▶ Hear it</button>
+          <button class="secondary" data-act="restart">↺ Start again</button>
+        </div>
       </div>
       <div class="score-card"><div class="score"></div></div>
       <p class="feedback" aria-live="polite"></p>
@@ -194,7 +203,7 @@ export function runPlay(el, step, onDone, { lessonId } = {}) {
 
   function reset() {
     stopPlayback?.(); stopPlayback = null;
-    score = renderScore(scoreEl, step.ex);
+    score = renderScore(scoreEl, step.ex, { fitHeight: spaceBelow(scoreEl, 70) });
     idx = 0; mistakes = events.map(() => 0); firstAt = null; lastAdvanceAt = 0; prevMidis = [];
     remaining = [...events[0].midis];
     resultWrap.innerHTML = '';
@@ -210,7 +219,7 @@ export function runPlay(el, step, onDone, { lessonId } = {}) {
     remaining = [...events[idx].midis];
     setClass(idx, 'cur');
     const cur = els(idx)[0];
-    cur?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+    cur?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth', inline: 'nearest' });
   }
   const off = input.on(({ midi, source }) => {
     if (stopPlayback || idx >= events.length) return;
@@ -238,7 +247,7 @@ export function runPlay(el, step, onDone, { lessonId } = {}) {
     const res = { accuracy, passed, seconds, troubleBars };
     store.log('play', lessonId, step.title, `${Math.round(accuracy * 100)}% clean, ${seconds}s`);
     fb.textContent = ''; fb.className = 'feedback';
-    resultWrap.innerHTML = `<div class="result">
+    resultWrap.innerHTML = `<div class="result overlay">
         <div class="stat"><b>${Math.round(accuracy * 100)}%</b><span>notes clean</span></div>
         <div class="stat"><b>${seconds}s</b><span>time taken</span></div>
         <p class="${passed ? 'good' : 'muted'}">${passed
@@ -249,7 +258,6 @@ export function runPlay(el, step, onDone, { lessonId } = {}) {
       </div>`;
     resultWrap.querySelector('[data-act=again]').onclick = reset;
     resultWrap.querySelector('[data-act=continue]').onclick = () => onDone(res);
-    resultWrap.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
   card.querySelector('[data-act=restart]').onclick = reset;
@@ -263,5 +271,8 @@ export function runPlay(el, step, onDone, { lessonId } = {}) {
     });
   };
   reset();
-  return () => { off(); stopPlayback?.(); };
+  // Re-fit the music if the window changes size before you've started playing.
+  const onResize = () => { if (idx === 0 && !stopPlayback && firstAt == null) reset(); };
+  window.addEventListener('resize', onResize);
+  return () => { off(); stopPlayback?.(); window.removeEventListener('resize', onResize); };
 }

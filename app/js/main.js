@@ -38,13 +38,35 @@ function route() {
   const [re, fn] = hit;
   const args = path.match(re).slice(1);
   root.innerHTML = '';
-  cleanup = fn(root, params, ...args) || null;
-  document.querySelectorAll('nav.tabs a').forEach(a => a.classList.toggle('on', path.startsWith(a.dataset.r)));
+  // Set up the practice layout (compact header, keys dock) first, so screens can size
+  // their music to the space that's actually left.
   const practising = /^\/(lesson|gym)/.test(path) || params.get('step') === 'placement';
   document.body.classList.toggle('practising', practising);
   updateDock(practising);
   window.scrollTo({ top: 0 });
+  cleanup = fn(root, params, ...args) || null;
+  document.querySelectorAll('nav.tabs a').forEach(a => a.classList.toggle('on', path.startsWith(a.dataset.r)));
+  fitToScreen();
 }
+
+// On practice screens, zoom the page out a little if it still doesn't fit above the keys.
+let fitRaf = 0;
+function fitToScreen() {
+  cancelAnimationFrame(fitRaf);
+  fitRaf = requestAnimationFrame(() => {
+    const page = root.querySelector('.page');
+    if (!page) return;
+    page.style.zoom = '';
+    if (!document.body.classList.contains('practising')) return;
+    const dockH = dock.hidden ? 0 : dock.offsetHeight;
+    const avail = window.innerHeight - page.getBoundingClientRect().top - dockH - 12;
+    const need = page.scrollHeight;
+    const z = need > avail ? Math.max(0.7, avail / need).toFixed(3) : '';
+    page.style.zoom = z;
+  });
+}
+new ResizeObserver(fitToScreen).observe(root);
+window.addEventListener('resize', fitToScreen);
 window.addEventListener('hashchange', route);
 
 // ---------------- listening chip

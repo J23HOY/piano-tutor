@@ -163,16 +163,18 @@ button.choice:hover { border-color: var(--accent); }
 .lessons .lt { flex: 1; }
 
 /* ---------- lesson ---------- */
-.lesson-head { display: flex; align-items: center; gap: 18px; margin-bottom: 12px; }
-.lesson-head h1 { margin: 0; font-size: 1.7rem; }
+.lesson-head { display: flex; align-items: center; gap: 18px; margin-bottom: 10px; }
+.lesson-head .lt { flex: 1; min-width: 0; }
+.lesson-head h1 { margin: 0; font-size: 1.5rem; }
 .back { text-decoration: none; font-weight: 600; white-space: nowrap; padding: 10px 0; }
-.steps-bar { display: flex; gap: 6px; margin-bottom: 22px; }
+.steps-bar { display: flex; gap: 6px; margin-bottom: 16px; }
 .steps-bar span { flex: 1; height: 6px; border-radius: 3px; background: var(--line); }
 .steps-bar span.done { background: var(--good); }
 .steps-bar span.cur { background: var(--accent); }
-.step-body { min-height: 320px; }
-.step-title { margin-bottom: 14px; }
-.step-nav { display: flex; justify-content: space-between; align-items: center; margin-top: 22px; gap: 12px; }
+.step-nav { display: flex; align-items: center; gap: 8px; }
+.step-nav button { min-height: 44px; }
+.explain-next { justify-content: flex-end; }
+.explain .visual svg.kbd { max-height: 190px; }
 .explain .prose { font-size: 1.12rem; max-width: 44em; }
 .explain .prose ul { padding-left: 1.2em; }
 .explain .visual { margin-top: 18px; }
@@ -186,7 +188,7 @@ button.choice:hover { border-color: var(--accent); }
 .milestone-banner p { margin: 0; }
 
 /* ---------- activities ---------- */
-.prompt { font-size: 2rem; text-align: center; margin: 6px 0 10px; }
+.prompt { font-size: 1.8rem; text-align: center; margin: 0 0 8px; }
 .feedback { text-align: center; font-size: 1.25rem; font-weight: 600; min-height: 1.8em; margin: 12px 0; }
 .feedback.good { color: var(--good); }
 .feedback.bad { color: var(--bad); }
@@ -203,8 +205,13 @@ button.choice:hover { border-color: var(--accent); }
 .gym .letters { margin-top: 16px; }
 .letters { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; max-width: 640px; margin: 0 auto; }
 .letters button { min-height: 64px; font-size: 1.5rem; font-family: var(--serif); background: var(--surface); color: var(--ink); border: 2px solid var(--line); }
-.intro { font-size: 1.08rem; color: var(--muted); max-width: 46em; }
-.toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+.play-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 10px; flex-wrap: wrap; }
+.play-head h2 { margin: 0 0 2px; }
+.intro { font-size: 1rem; color: var(--muted); max-width: 46em; margin: 0; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.toolbar button { min-height: 44px; padding: 0 16px; }
+.feedback { min-height: 1.5em; }
+.activity.play .feedback { margin: 8px 0 0; }
 
 /* the sheet music always sits on paper, even in dark mode */
 .staff-card, .score-card {
@@ -222,6 +229,12 @@ button.choice:hover { border-color: var(--accent); }
 @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
 
 .result { text-align: center; padding: 10px 0; }
+.result.overlay {
+  position: fixed; z-index: 30; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(520px, calc(100vw - 32px)); padding: 26px 24px 22px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 12px 48px rgba(0,0,0,.18), 0 0 0 100vmax rgba(20,20,24,.25);
+}
 .result .row { justify-content: center; }
 .result p.good { color: var(--good); font-weight: 600; }
 .stat { display: inline-flex; flex-direction: column; align-items: center; margin: 0 22px 14px; }
@@ -252,9 +265,18 @@ svg.kbd { width: 100%; height: auto; display: block; user-select: none; -webkit-
   display: flex; align-items: flex-end; gap: 8px;
 }
 .dock-keys { flex: 1; max-width: 1100px; margin: 0 auto; }
-.dock-keys svg.kbd { max-height: 120px; }
+.dock-keys svg.kbd { max-height: 96px; }
 .dock .hide { min-height: 36px; padding: 0 10px; font-size: .8rem; background: var(--surface-2); color: var(--muted); }
-body.with-dock main { padding-bottom: 180px; }
+body.with-dock main { padding-bottom: 130px; }
+
+/* ---------- practice screens: compact, so everything fits above the keys ---------- */
+body.practising .topbar { padding-top: calc(6px + env(safe-area-inset-top, 0px)); padding-bottom: 6px; }
+body.practising nav.tabs a { padding: 8px 14px; }
+body.practising main { padding-top: 14px; }
+body.practising .dock { padding-top: 6px; padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)); }
+body.practising .page > h1 { font-size: 1.5rem; margin-bottom: 4px; }
+body.practising .page > .lead { font-size: 1rem; margin-bottom: 10px; }
+.activity .kbd-wrap svg.kbd { max-height: 170px; }
 
 /* ---------- progress ---------- */
 .levelname { font-size: 1.2rem; font-weight: 600; }

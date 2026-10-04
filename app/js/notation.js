@@ -23,7 +23,8 @@ function makeNote(tok, clef) {
 }
 
 // Draws an exercise. Returns { noteAt(ref) -> SVG element } so the player can colour notes.
-export function renderScore(container, ex, { scale = 1.4, maxPerLine = 4 } = {}) {
+// With `fitHeight`, picks the largest scale (up to 1.4) that fits the music into that many pixels.
+export function renderScore(container, ex, { scale = 1.4, maxPerLine = 4, fitHeight = null } = {}) {
   const F = VF();
   container.innerHTML = '';
   const tracks = [];
@@ -34,11 +35,20 @@ export function renderScore(container, ex, { scale = 1.4, maxPerLine = 4 } = {})
   const nBars = Math.max(...tracks.map(t => t.bars.length));
 
   const cssWidth = Math.max(320, container.clientWidth || 800);
-  const avail = cssWidth / scale - 20;
-  const perLine = Math.max(1, Math.min(maxPerLine, Math.floor(avail / 210), nBars));
-  const lines = Math.ceil(nBars / perLine);
   const staffGap = 100;
-  const lineH = tracks.length === 2 ? 230 : 130;
+  const lineH = tracks.length === 2 ? 220 : 120;
+  const layout = s => {
+    const perLine = Math.max(1, Math.min(maxPerLine, Math.floor((cssWidth / s - 20) / 190), nBars));
+    return { perLine, lines: Math.ceil(nBars / perLine) };
+  };
+  if (fitHeight) {
+    for (scale = 1.4; scale > 0.75; scale -= 0.05) {
+      const { lines } = layout(scale);
+      if ((lines * lineH + 20) * scale <= fitHeight) break;
+    }
+  }
+  const avail = cssWidth / scale - 20;
+  const { perLine, lines } = layout(scale);
   const head = 75; // room for clef + time signature on the first bar of a line
 
   const renderer = new F.Renderer(container, F.Renderer.Backends.SVG);

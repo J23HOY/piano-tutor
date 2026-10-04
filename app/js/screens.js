@@ -214,11 +214,11 @@ export function renderLesson(root, params, id) {
   root.innerHTML = `<section class="page lesson">
     <div class="lesson-head">
       <a class="back" href="#/path">← Path</a>
-      <div><div class="muted small">${UNITS[unitOf(id)].title}</div><h1>${L.title}</h1></div>
+      <div class="lt"><div class="muted small">${UNITS[unitOf(id)].title}</div><h1>${L.title}</h1></div>
+      <div class="step-nav"></div>
     </div>
     <div class="steps-bar">${L.steps.map((_, i) => `<span data-i="${i}"></span>`).join('')}</div>
     <div class="step-body"></div>
-    <div class="step-nav"></div>
   </section>`;
   const body = root.querySelector('.step-body');
   const nav = root.querySelector('.step-nav');
@@ -268,31 +268,30 @@ export function renderLesson(root, params, id) {
     nav.innerHTML = '';
     body.innerHTML = '';
     if (st.type === 'text') {
-      body.innerHTML = `<div class="explain"><h2>${st.title}</h2><div class="prose">${st.body}</div><div class="visual"></div></div>`;
+      body.innerHTML = `<div class="explain"><h2>${st.title}</h2><div class="prose">${st.body}</div><div class="visual"></div>
+        <div class="row explain-next"><button data-nextstep>${i + 1 < L.steps.length ? 'Got it →' : 'Finish'}</button></div></div>`;
       const v = body.querySelector('.visual');
       if (st.visual?.kind === 'keyboard') v.appendChild(createKeyboard(st.visual).el);
       if (st.visual?.kind === 'staff') { v.classList.add('staff-card'); renderNotes(v, st.visual.notes); }
       if (st.visual?.kind === 'score') { v.classList.add('score-card'); renderScore(v, st.visual.ex, { scale: 1.3 }); }
-      nav.innerHTML = `${i > 0 ? '<button class="secondary" data-prev>← Back</button>' : '<span></span>'}<button data-nextstep>${i + 1 < L.steps.length ? 'Got it →' : 'Finish'}</button>`;
-      nav.querySelector('[data-nextstep]').onclick = () => finish();
+      nav.innerHTML = i > 0 ? '<button class="secondary" data-prev>← Back</button>' : '';
+      body.querySelector('[data-nextstep]').onclick = () => finish();
     } else if (st.type === 'find') {
       cleanup = runFind(body, st, () => finish());
-      nav.innerHTML = `${i > 0 ? '<button class="secondary" data-prev>← Back</button>' : '<span></span>'}<button class="link" data-skip>Skip</button>`;
+      nav.innerHTML = `${i > 0 ? '<button class="secondary" data-prev>← Back</button>' : ''}<button class="link" data-skip>Skip</button>`;
     } else if (st.type === 'gym') {
       const wrap = document.createElement('div');
-      body.innerHTML = `<h2 class="step-title">${st.prompt}</h2>`;
       body.appendChild(wrap);
       cleanup = runGym(wrap, { pool: st.notes, count: st.count, id, title: L.title }, r => {
         wrap.innerHTML = gymSummaryHTML(r) + `<div class="row"><button data-cont>Continue</button></div>`;
         wrap.querySelector('[data-cont]').onclick = () => finish({ best: r.right / r.total });
       });
-      nav.innerHTML = `${i > 0 ? '<button class="secondary" data-prev>← Back</button>' : '<span></span>'}<button class="link" data-skip>Skip</button>`;
+      nav.innerHTML = `${i > 0 ? '<button class="secondary" data-prev>← Back</button>' : ''}<button class="link" data-skip>Skip</button>`;
     } else if (st.type === 'play') {
-      body.innerHTML = `<h2 class="step-title">${st.title}</h2>`;
       const wrap = document.createElement('div');
       body.appendChild(wrap);
       cleanup = runPlay(wrap, st, r => finish({ best: r.accuracy, passed: r.passed }), { lessonId: id });
-      nav.innerHTML = `${i > 0 ? '<button class="secondary" data-prev>← Back</button>' : '<span></span>'}<button class="link" data-skip>Skip</button>`;
+      nav.innerHTML = `${i > 0 ? '<button class="secondary" data-prev>← Back</button>' : ''}<button class="link" data-skip>Skip</button>`;
     }
     nav.querySelector('[data-prev]')?.addEventListener('click', () => show(i - 1));
     nav.querySelector('[data-skip]')?.addEventListener('click', () => (i + 1 < L.steps.length ? show(i + 1) : completeLesson()));

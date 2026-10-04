@@ -1,6 +1,6 @@
 // Offline support: serve from cache straight away, refresh the cache in the background.
 // So an update shows up the time after it's published.
-const CACHE = 'piano-tutor-v1';
+const CACHE = 'piano-tutor-v2';
 const CORE = ['./', './index.html', './css/app.css', './vendor/vexflow.js', './js/main.js', './manifest.webmanifest', './icons/icon.svg'];
 
 self.addEventListener('install', e => {
